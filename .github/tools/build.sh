@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+KEEP_BIN=""
+[ "${1:-}" = "--keep-bin" ] && { KEEP_BIN=1; shift; }
 VERSION="${1:-$(grep '^version=' module.prop | cut -d'=' -f2)}"
 DIST_DIR="dist"
 BIN_DIR="tailscale/bin"
@@ -33,12 +35,13 @@ done
 
 echo ""
 echo "Creating zip without binaries..."
-zip -9 -r "${DIST_DIR}/Magisk-Tailscaled-${VERSION}.zip" . -x "*.git*" "dist/*" "*.zip" "*.json" "*.md" "${BIN_DIR}/*" ".shellcheckrc" >/dev/null
+zip -9 -r "${DIST_DIR}/Magisk-Tailscaled-${VERSION}.zip" . -x "*.git*" "dist/*" "*.zip" "*.json" "*.md" "${BIN_DIR}/*" ".shellcheckrc" "android/*" >/dev/null
 
 echo "Creating zip with binaries..."
-zip -9 -r "${DIST_DIR}/Magisk-Tailscaled-${VERSION}-full.zip" . -x "*.git*" "dist/*" "*.zip" "*.json" "*.md" ".shellcheckrc" >/dev/null
+zip -9 -r "${DIST_DIR}/Magisk-Tailscaled-${VERSION}-full.zip" . -x "*.git*" "dist/*" "*.zip" "*.json" "*.md" ".shellcheckrc" "android/*" >/dev/null
 
-rm -f "$BIN_DIR"/*
+# --keep-bin: leave binaries for the Android app build, which bundles the full module.
+[ -n "$KEEP_BIN" ] || rm -f "$BIN_DIR"/*
 
 echo ""
 echo "Build completed successfully!"

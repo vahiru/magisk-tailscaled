@@ -50,6 +50,28 @@ Notes for KernelSU:
 If `tailscale` is not found before the first reboot, use the full path:
 `su -c /data/adb/tailscale/bin/tailscale login`.
 
+## Android app (Tailscaled Manager)
+
+A Material 3 (Material You) companion app in [`android/`](android/). It uses root (`su`) to talk to
+the module and the daemon; the module keeps doing the boot / background work.
+
+- One switch to connect / disconnect (starts tailscaled when needed).
+- Login: browser link (opened automatically), auth key, or a custom control server (Headscale).
+  Add / switch account, log out, rename the device.
+- Status: connection state, Tailscale IPs, MagicDNS name, account, health warnings, exit node in use.
+- Devices: searchable list with online / exit node / subnet router filters; details sheet with
+  IPs, routes, direct vs relay connection, traffic, ping and "use as exit node".
+- Preferences: subnet routes, Tailscale DNS, Tailscale SSH, shields up, run as exit node, LAN access.
+- Daemon: start / stop / restart, start on boot, daemon and service logs.
+- Bundles the full module: if it is missing (or older), the app installs it through
+  KernelSU (`ksud`), APatch (`apd`) or Magisk.
+
+Build (JDK 21, Android SDK 37): put the binaries in `tailscale/bin/` to bundle the full module, then
+
+```sh
+cd android && ./gradlew assembleRelease
+```
+
 ## Files
 
 | Path | Purpose |

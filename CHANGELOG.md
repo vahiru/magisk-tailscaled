@@ -1,5 +1,9 @@
 ## v3.0.0.0
 
+### New: Tailscaled Manager app
+- Material 3 root app (`android/`) to connect, log in (browser / auth key / Headscale), view status,
+  browse tailnet devices, pick exit nodes and change preferences. Bundles and installs the module.
+
 ### Rewrite: Android 16 / 17 and KernelSU
 - Supports Android 8 (API 26) through Android 17 (API 37).
 - Works on Magisk, KernelSU (incl. KernelSU Next / SukiSU) and APatch.
