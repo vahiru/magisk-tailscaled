@@ -39,7 +39,7 @@ class TailscaleRepository(private val context: Context) {
             echo "VERSIONCODE=$(sed -n 's/^versionCode=//p' ${'$'}P 2>/dev/null)"
             echo "AUTOSTART=$(sed -n 's/^TS_AUTOSTART=//p' $CONF 2>/dev/null | tr -d '"')"
             echo "COEXIST=$(sed -n 's/^TS_VPN_COEXIST=//p' $CONF 2>/dev/null | tr -d '"' | tail -n 1)"
-            echo "COEXISTRULES=$( (ip -4 rule show; ip -6 rule show) 2>/dev/null | grep -c '^12510:')"
+            echo "COEXISTRULES=$( (ip -4 rule show; ip -6 rule show) 2>/dev/null | grep -c '^9510:')"
             echo "VPNIF=$(ip -o link show up 2>/dev/null | awk -F': ' '${'$'}2 ~ /^(tun|ppp|wg|ipsec|utun)/ && ${'$'}2 !~ /^tailscale/ { sub(/@.*/, "", ${'$'}2); printf "%s ", ${'$'}2 }')"
             if [ -f /data/adb/ap/bin/busybox ] || [ -x /data/adb/apd ]; then echo MGR=APatch
             elif [ -x /data/adb/ksud ] || [ -d /data/adb/ksu ]; then echo MGR=KernelSU
@@ -114,6 +114,8 @@ class TailscaleRepository(private val context: Context) {
         if (!r.ok) return r
         return RootShell.exec("[ -f $ROUTES ] && sh $ROUTES sync; true")
     }
+
+    suspend fun diag(): ShellResult = RootShell.exec("$SERVICE diag", timeoutMs = 90_000)
 
     suspend fun readLog(daemon: Boolean, lines: Int = 400): String =
         RootShell.exec("tail -n $lines ${if (daemon) DAEMON_LOG else SERVICE_LOG} 2>&1").out

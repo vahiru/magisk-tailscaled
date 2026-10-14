@@ -7,38 +7,30 @@ VERSION="${1:-$(grep '^version=' module.prop | cut -d'=' -f2)}"
 DIST_DIR="dist"
 BIN_DIR="tailscale/bin"
 
-get_latest_release() {
-  curl -s "https://api.github.com/repos/$1/releases/latest" | grep '"browser_download_url"' | grep "$2" | sed 's/.*"browser_download_url": "\([^"]*\)".*/\1/'
-}
-
 echo "Building Magisk-Tailscaled ${VERSION}"
 echo "========================================"
 
 mkdir -p "$BIN_DIR" "$DIST_DIR"
 
-echo "Downloading binaries..."
-for ARCH in arm arm64; do
-  case $ARCH in
-    arm) F_ARCH=armv7a ;;
-    arm64) F_ARCH=aarch64 ;;
-  esac
-  
-  echo "- Downloading tailscaled for ${ARCH}..."
-  URL=$(get_latest_release "anasfanani/tailscale-android-cli" "tailscale_.*_${ARCH}\.tgz")
-  curl -#L "$URL" | tar -xz -C "$BIN_DIR"
-  mv "$BIN_DIR/tailscaled" "$BIN_DIR/tailscaled-$ARCH"
-  
-  echo "- Downloading jq for ${ARCH}..."
-  URL=$(get_latest_release "theshoqanebi/jq-build-for-android" "jq-${F_ARCH}-linux-android")
-  curl -#L "$URL" -o "$BIN_DIR/jq-$ARCH"
+# Native binaries are built from source (see tailscaled/), not downloaded.
+if [ ! -f "$BIN_DIR/tailscaled-arm64" ] || [ ! -f "$BIN_DIR/tailscaled-arm" ]; then
+  ./tailscaled/build.sh
+fi
+if [ ! -f "$BIN_DIR/jq-arm64" ] || [ ! -f "$BIN_DIR/jq-arm" ]; then
+  ./tailscaled/build-jq.sh
+fi
+
+# Raw binaries for the lightweight zip, which downloads them during installation.
+for f in "$BIN_DIR"/tailscaled-* "$BIN_DIR"/jq-*; do
+  cp "$f" "${DIST_DIR}/$(basename "$f")"
 done
 
 echo ""
 echo "Creating zip without binaries..."
-zip -9 -r "${DIST_DIR}/Magisk-Tailscaled-${VERSION}.zip" . -x "*.git*" "dist/*" "*.zip" "*.json" "*.md" "${BIN_DIR}/*" ".shellcheckrc" "android/*" >/dev/null
+zip -9 -r "${DIST_DIR}/Magisk-Tailscaled-${VERSION}.zip" . -x "*.git*" "dist/*" "*.zip" "*.json" "*.md" "${BIN_DIR}/*" ".shellcheckrc" "android/*" "tailscaled/*" >/dev/null
 
 echo "Creating zip with binaries..."
-zip -9 -r "${DIST_DIR}/Magisk-Tailscaled-${VERSION}-full.zip" . -x "*.git*" "dist/*" "*.zip" "*.json" "*.md" ".shellcheckrc" "android/*" >/dev/null
+zip -9 -r "${DIST_DIR}/Magisk-Tailscaled-${VERSION}-full.zip" . -x "*.git*" "dist/*" "*.zip" "*.json" "*.md" ".shellcheckrc" "android/*" "tailscaled/*" >/dev/null
 
 # --keep-bin: leave binaries for the Android app build, which bundles the full module.
 [ -n "$KEEP_BIN" ] || rm -f "$BIN_DIR"/*

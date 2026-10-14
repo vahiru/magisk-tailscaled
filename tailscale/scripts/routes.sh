@@ -1,13 +1,21 @@
 #!/system/bin/sh
-# VPN coexistence for subnet routes.
+# Coexistence with other VPN apps (TS_VPN_COEXIST, default on).
 #
-# tailscaled sends tailnet addresses (100.64.0.0/10, fd7a:115c:a1e0::/48) to table 52
-# with an ip rule at priority 12500, ahead of Android's VPN rules (13000). Accepted
-# subnet routes (e.g. a home LAN behind a subnet router) are only looked up at 13001,
-# so while another VPN app is active they end up inside that VPN instead.
+# Android sends every socket that did not explicitly pick a network, root included,
+# into an active VPN (netd "secure VPN" rules, priority 12000-13000+). Two things
+# break because of that, and both are fixed here with ip rules placed before all of
+# netd's rules (< 10000):
 #
-# This mirrors every subnet route in table 52 into its own rule at priority 12510 so
-# those subnets keep going through Tailscale. Only rules at TS_ROUTE_PREF are touched.
+# 1. Underlay: tailscaled's own WireGuard / DERP / control traffic carries the bypass
+#    mark (0x10000000/0x1e000000 in this build). This fork already sets Android's
+#    "protected from VPN" bit on it; the rule below additionally pins it to the
+#    physical default network (Wi-Fi / mobile data) ahead of every netd rule, so it
+#    also survives VPN lockdown ("block connections without VPN").
+# 2. Overlay: every route tailscaled installs in table 52 (tailnet peers, quad-100,
+#    accepted subnet routes) gets its own rule, so tailnet traffic never ends up in
+#    the other VPN, whatever priorities a given Android version uses.
+#
+# Only rules at TS_UNDERLAY_PREF and TS_ROUTE_PREF are touched.
 #
 #   routes.sh loop    keep rules in sync while tailscaled runs (started by tailscaled.service)
 #   routes.sh sync    one sync pass
@@ -17,29 +25,61 @@ DIR="$(dirname "$(realpath "$0")")"
 # shellcheck source=common.sh
 . "$DIR/common.sh"
 
-TS_ROUTE_PREF=12510
+TS_UNDERLAY_PREF=9500
+TS_ROUTE_PREF=9510
 TS_ROUTE_TABLE=52
 TS_ROUTE_INTERVAL=10
+TS_BYPASS_MARK=0x10000000/0x1e000000
+# Priorities used by earlier versions, cleaned up on clear.
+TS_OLD_PREFS="12510"
 
-# Subnet routes currently installed by tailscaled in table 52, minus the tailnet
-# ranges themselves (already handled by tailscaled), default routes and throw routes.
+# Routes tailscaled currently has in table 52 (peers, quad-100, subnet routes),
+# without default, throw and similar routes.
 wanted_routes() {
 	if [ "$1" = 4 ]; then
 		ip -4 route show table "$TS_ROUTE_TABLE" 2>/dev/null | awk '
-			$1 == "throw" || $1 == "default" || $1 == "unreachable" || $1 == "blackhole" { next }
+			$1 == "throw" || $1 == "default" || $1 == "unreachable" || $1 == "blackhole" || $1 == "prohibit" { next }
 			!/dev tailscale0/ { next }
-			{
-				split($1, a, /[.\/]/)
-				if (a[1] == 100 && a[2] >= 64 && a[2] <= 127) next
-				if ($1 == "0.0.0.0/0") next
-				print $1
-			}'
+			$1 == "0.0.0.0/0" { next }
+			{ print $1 }'
 	else
 		ip -6 route show table "$TS_ROUTE_TABLE" 2>/dev/null | awk '
-			$1 == "throw" || $1 == "default" || $1 == "unreachable" || $1 == "blackhole" { next }
+			$1 == "throw" || $1 == "default" || $1 == "unreachable" || $1 == "blackhole" || $1 == "prohibit" { next }
 			!/dev tailscale0/ { next }
-			tolower($1) ~ /^fd7a:115c:a1e0:/ || tolower($1) ~ /^fe80:/ || $1 == "::/0" { next }
+			tolower($1) ~ /^fe80:/ || $1 == "::/0" { next }
 			{ print $1 }'
+	fi
+}
+
+# Routing table of Android's physical default network: netd's default-network rule
+# "from all fwmark 0x0/0xffff iif lo lookup <table>" (no uidrange, not a VPN).
+physical_table() {
+	ip -"$1" rule show 2>/dev/null | awk '
+		/uidrange/ { next }
+		/fwmark 0(x0)?\/0xffff iif lo lookup / {
+			t = $NF
+			if (t ~ /^(tun|ppp|wg|ipsec|utun|tailscale)/) next
+			table = t
+		}
+		END { if (table != "") print table }'
+}
+
+current_underlay() {
+	ip -"$1" rule show 2>/dev/null | sed -n "s/^${TS_UNDERLAY_PREF}:.* lookup \([^ ]*\).*/\1/p"
+}
+
+sync_underlay() {
+	fam="$1"
+	want=""
+	coexist_enabled && want="$(physical_table "$fam")"
+	have="$(current_underlay "$fam")"
+	[ "$want" = "$have" ] && return 0
+	while ip -"$fam" rule del pref "$TS_UNDERLAY_PREF" 2>/dev/null; do :; done
+	if [ -n "$want" ] &&
+		ip -"$fam" rule add pref "$TS_UNDERLAY_PREF" fwmark "$TS_BYPASS_MARK" lookup "$want" 2>/dev/null; then
+		log Info "VPN coexist: IPv$fam tailscaled traffic -> $want"
+	elif [ -n "$have" ]; then
+		log Info "VPN coexist: IPv$fam underlay rule removed"
 	fi
 }
 
@@ -60,7 +100,7 @@ sync_family() {
 	for p in $want; do
 		echo "$have" | grep -qxF "$p" && continue
 		if ip -"$fam" rule add pref "$TS_ROUTE_PREF" to "$p" lookup "$TS_ROUTE_TABLE" 2>/dev/null; then
-			log Info "VPN coexist: $p -> table $TS_ROUTE_TABLE (pref $TS_ROUTE_PREF)"
+			log Info "VPN coexist: $p -> tailscale0"
 		fi
 	done
 	for p in $have; do
@@ -71,13 +111,22 @@ sync_family() {
 }
 
 sync_all() {
+	for fam in 4 6; do
+		for pref in $TS_OLD_PREFS; do
+			while ip -"$fam" rule del pref "$pref" 2>/dev/null; do :; done
+		done
+	done
+	sync_underlay 4
+	sync_underlay 6
 	sync_family 4
 	sync_family 6
 }
 
 clear_all() {
 	for fam in 4 6; do
-		while ip -"$fam" rule del pref "$TS_ROUTE_PREF" 2>/dev/null; do :; done
+		for pref in "$TS_UNDERLAY_PREF" "$TS_ROUTE_PREF" $TS_OLD_PREFS; do
+			while ip -"$fam" rule del pref "$pref" 2>/dev/null; do :; done
+		done
 	done
 }
 
@@ -93,10 +142,11 @@ loop)
 sync) sync_all ;;
 clear) clear_all ;;
 show)
-	echo "IPv4:"
-	current_rules 4 | sed 's/^/  /'
-	echo "IPv6:"
-	current_rules 6 | sed 's/^/  /'
+	for fam in 4 6; do
+		echo "IPv$fam tailscaled traffic -> $(current_underlay "$fam" | head -n 1)"
+		echo "IPv$fam routes kept on Tailscale:"
+		current_rules "$fam" | sed 's/^/  /'
+	done
 	;;
 *)
 	echo "usage: $0 {loop|sync|clear|show}"

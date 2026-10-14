@@ -38,8 +38,7 @@ elif [ "$API" -gt 37 ]; then
 fi
 
 case "$ARCH" in
-arm) JQ_ARCH="armv7a" ;;
-arm64) JQ_ARCH="aarch64" ;;
+arm | arm64) ;;
 *) abort "! Unsupported architecture: $ARCH (only arm / arm64)." ;;
 esac
 
@@ -98,12 +97,15 @@ for f in "$TS_BIN_DIR"/*-"$ARCH"; do
 	[ -f "$f" ] && mv -f "$f" "${f%-"$ARCH"}"
 done
 
+# Lightweight zip: fetch the binaries built for this module (patched tailscaled,
+# 16 KB page aligned) from its GitHub release.
+RELEASE_REPO="vahiru/magisk-tailscaled"
 if [ ! -f "$TS_BIN_DIR/tailscaled" ]; then
-	gh_download "anasfanani/tailscale-android-cli" "tailscale_.*_${ARCH}\.tgz" || abort "! Unable to download tailscaled, use the -full.zip instead."
-	tar -xzf "$TMPDIR/$FILENAME" -C "$TS_BIN_DIR" || abort "! Unable to extract $FILENAME"
+	gh_download "$RELEASE_REPO" "/tailscaled-${ARCH}\"" || abort "! Unable to download tailscaled, use the -full.zip instead."
+	mv -f "$TMPDIR/$FILENAME" "$TS_BIN_DIR/tailscaled"
 fi
 if [ ! -f "$TS_BIN_DIR/jq" ]; then
-	if gh_download "theshoqanebi/jq-build-for-android" "jq-${JQ_ARCH}-linux-android"; then
+	if gh_download "$RELEASE_REPO" "/jq-${ARCH}\""; then
 		mv -f "$TMPDIR/$FILENAME" "$TS_BIN_DIR/jq"
 	else
 		ui_print "! jq not available, 'tailscaled.service status' will show plain output."

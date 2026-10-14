@@ -56,6 +56,8 @@ data class TaskLog(
     val lines: List<String> = emptyList(),
     val running: Boolean = true,
     val exitCode: Int? = null,
+    /** Offer copy / share buttons for the output. */
+    val shareable: Boolean = false,
 )
 
 sealed interface UiMessage {
@@ -172,6 +174,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val title = if (daemon) "tailscaled.log" else "service.log"
             _task.value = TaskLog(title)
             _task.value = TaskLog(title, repo.readLog(daemon).lines(), running = false)
+        }
+    }
+
+    fun runDiagnostics() {
+        viewModelScope.launch {
+            val title = "diag.txt"
+            _task.value = TaskLog(title, listOf("Collecting… (up to a minute)"))
+            val r = repo.diag()
+            _task.value = TaskLog(title, r.out.lines(), running = false, exitCode = r.code, shareable = true)
         }
     }
 

@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Badge
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Extension
@@ -58,6 +59,7 @@ class SettingsActions(
     val onDaemon: (Boolean) -> Unit,
     val onAutostart: (Boolean) -> Unit,
     val onVpnCoexist: (Boolean) -> Unit,
+    val onDiagnostics: () -> Unit,
     val onRestartDaemon: () -> Unit,
     val onShowLog: (daemon: Boolean) -> Unit,
     val onInstallModule: () -> Unit,
@@ -186,6 +188,15 @@ fun SettingsScreen(state: UiState, a: SettingsActions) {
             item { ActionRow(Icons.Outlined.RestartAlt, stringResource(R.string.restart_daemon), null, enabled = !state.busy, onClick = a.onRestartDaemon) }
             item { ActionRow(Icons.Outlined.Description, stringResource(R.string.daemon_log), "tailscaled.log", onClick = { a.onShowLog(true) }) }
             item { ActionRow(Icons.Outlined.Description, stringResource(R.string.service_log), "service.log", onClick = { a.onShowLog(false) }) }
+            item {
+                ActionRow(
+                    Icons.Outlined.BugReport,
+                    stringResource(R.string.diagnostics),
+                    stringResource(R.string.diagnostics_summary),
+                    enabled = !state.busy,
+                    onClick = a.onDiagnostics,
+                )
+            }
         }
 
         // Module

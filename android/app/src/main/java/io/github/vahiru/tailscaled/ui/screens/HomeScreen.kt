@@ -252,13 +252,10 @@ private fun VpnCoexistCard(state: UiState) {
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
-            VpnLine(true, stringResource(R.string.vpn_tailnet_ok))
-            if (prefs?.routeAll == true) {
-                if (module.vpnCoexist) {
-                    VpnLine(true, stringResource(R.string.vpn_subnets_kept, module.coexistRules))
-                } else {
-                    VpnLine(false, stringResource(R.string.vpn_subnets_lost))
-                }
+            if (module.vpnCoexist) {
+                VpnLine(true, stringResource(R.string.vpn_subnets_kept, module.coexistRules))
+            } else {
+                VpnLine(false, stringResource(R.string.vpn_subnets_lost))
             }
             VpnLine(null, stringResource(R.string.vpn_internet_via_vpn))
             if (usingExitNode) VpnLine(false, stringResource(R.string.vpn_exit_node_inactive))

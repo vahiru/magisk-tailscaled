@@ -57,8 +57,9 @@ Android's VPN rules (priority 13000), so it runs side by side with VPN apps:
 
 | Traffic | With another VPN active |
 |---|---|
-| Tailnet devices (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) | Tailscale (rule 12500, ahead of the VPN) |
-| Accepted subnet routes | Tailscale, thanks to the module's *VPN coexistence* rules (12510) |
+| Tailnet devices (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) | Tailscale (VPN coexistence rules at 9510, ahead of all Android rules) |
+| tailscaled's own WireGuard / DERP traffic | physical network, never the other VPN (rule 9500) |
+| Accepted subnet routes | Tailscale, thanks to the module's *VPN coexistence* rules (9510) |
 | Other internet traffic | the other VPN |
 | Tailscale exit node | no effect until the other VPN is turned off |
 | MagicDNS names | may not resolve (DNS goes through the VPN); use `100.x` addresses |
@@ -66,7 +67,7 @@ Android's VPN rules (priority 13000), so it runs side by side with VPN apps:
 - VPN coexistence is on by default (`TS_VPN_COEXIST=1` in `settings.conf`); `tailscaled.service routes`
   lists the active rules. The app shows a summary card when another VPN is detected.
 - Android *Private DNS* (DNS over TLS) bypasses Tailscale DNS, so MagicDNS does not work with it.
-- A VPN's "Block connections without VPN" (lockdown) option may block tailnet traffic.
+- Problems? Run `su -c tailscaled.service diag` (or Settings → Diagnostics in the app) and attach the report.
 
 ## Android app (Tailscaled Manager)
 
@@ -84,7 +85,10 @@ the module and the daemon; the module keeps doing the boot / background work.
 - Bundles the full module: if it is missing (or older), the app installs it through
   KernelSU (`ksud`), APatch (`apd`) or Magisk.
 
-Build (JDK 21, Android SDK 37): put the binaries in `tailscale/bin/` to bundle the full module, then
+Native binaries: `tailscaled/build.sh` (patched tailscaled) and `tailscaled/build-jq.sh` build them
+into `tailscale/bin/` (Go + Android NDK r27c).
+
+Build the app (JDK 21, Android SDK 37); binaries in `tailscale/bin/` get bundled with the module:
 
 ```sh
 cd android && ./gradlew assembleRelease
@@ -122,7 +126,8 @@ TS_VPN_COEXIST=1                       # keep subnet routes on Tailscale while a
   - `status [summary|peer|exit-node|all]`
   - `log [daemon|service]`
   - `info`: Android version, kernel, page size, root manager, binaries (include this in bug reports)
-  - `routes`: subnet routes kept on Tailscale while another VPN is active
+  - `routes`: routes kept on Tailscale while another VPN is active
+  - `diag`: diagnostic report (routing, DNS, logs), also saved to `run/diag.txt`
 
 ## Example of Using Tailscale
 

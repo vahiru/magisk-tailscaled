@@ -127,12 +127,15 @@
     <string name="msg_exit_node_cleared">已停止使用出口节点</string>
     <string name="vpn_detected">检测到其他 VPN（%1$s）</string>
     <string name="vpn_tailnet_ok">tailnet 设备仍然通过 Tailscale 访问</string>
-    <string name="vpn_subnets_kept">子网路由保持走 Tailscale（%1$d 条规则）</string>
-    <string name="vpn_subnets_lost">子网路由会进入该 VPN，可在设置中开启“VPN 共存”</string>
+    <string name="vpn_subnets_kept">tailnet 和子网路由保持走 Tailscale（%1$d 条规则）</string>
+    <string name="vpn_subnets_lost">在设置中开启“VPN 共存”，让 tailnet 和子网路由保持走 Tailscale</string>
     <string name="vpn_internet_via_vpn">其他上网流量走该 VPN</string>
     <string name="vpn_exit_node_inactive">开着该 VPN 时，Tailscale 出口节点不会生效</string>
     <string name="vpn_magicdns">MagicDNS 名称可能无法解析，请直接使用 100.x 地址</string>
     <string name="private_dns_notice">系统“私人 DNS”已开启，它会绕过 Tailscale DNS，MagicDNS 名称将无法解析。请使用 100.x 地址，或在系统设置中关闭私人 DNS。</string>
     <string name="pref_vpn_coexist">VPN 共存</string>
-    <string name="pref_vpn_coexist_summary">开启其他 VPN 时，子网路由仍然走 Tailscale</string>
+    <string name="pref_vpn_coexist_summary">开启其他 VPN 时，tailnet 和子网路由仍走 Tailscale</string>
+    <string name="diagnostics">诊断信息</string>
+    <string name="diagnostics_summary">路由、DNS 和日志汇总成一份报告，可复制或分享</string>
+    <string name="share">分享</string>
 </resources>

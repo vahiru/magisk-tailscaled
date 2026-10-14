@@ -18,7 +18,8 @@ usage: ${scripts_name} <command> [option]
   status [mode]         Show status, mode: summary (default) | peer | exit-node | all
   log [daemon|service]  Follow the daemon log or show the service log
   info                  Show environment info (Android / kernel / root manager)
-  routes                Show subnet routes kept ahead of other VPNs
+  routes                Show routes kept on Tailscale while another VPN is active
+  diag                  Collect a diagnostic report (also saved to run/diag.txt)
   help                  Show this message
 
 Settings: ${TS_CONF}
@@ -311,6 +312,42 @@ do_status() {
   fi
 }
 
+# Everything needed to debug routing / DNS problems on a device, in one report.
+do_diag() {
+	section() { printf '\n===== %s =====\n' "$1"; }
+	{
+		echo "Magisk Tailscaled diagnostics, $(now)"
+		section "info"
+		do_info
+		section "tailscale status"
+		timeout 10 "$TS_CLI_BIN" status 2>&1 | head -n 60
+		section "tailscale prefs"
+		timeout 10 "$TS_CLI_BIN" debug prefs 2>&1
+		section "ip rule (IPv4)"
+		ip -4 rule show 2>&1
+		section "ip rule (IPv6)"
+		ip -6 rule show 2>&1
+		section "ip route table 52"
+		ip -4 route show table 52 2>&1
+		ip -6 route show table 52 2>&1
+		section "interfaces"
+		ip -o addr show 2>&1 | awk '{print $2, $3, $4}'
+		section "iptables nat (DNS redirect)"
+		iptables -t nat -S OUTPUT 2>&1 | grep -E "53|ts-" | head -n 20
+		iptables -t nat -S PREROUTING 2>&1 | grep -E "53|ts-" | head -n 20
+		section "Android networks (dumpsys connectivity)"
+		dumpsys connectivity 2>/dev/null | grep -E "Active default network|NetworkAgentInfo\{" | sed 's/nc{.*//' | head -n 12
+		echo "private_dns_mode=$(settings get global private_dns_mode 2>/dev/null)"
+		section "tailscale netcheck"
+		timeout 20 "$TS_CLI_BIN" netcheck 2>&1 | head -n 40
+		section "tailscaled.log (last 80 lines)"
+		tail -n 80 "$TS_LOG_FILE" 2>&1
+		section "service.log (last 40 lines)"
+		tail -n 40 "$TS_RUN_LOG_FILE" 2>&1
+	} >"$TS_RUN_DIR/diag.txt" 2>&1
+	cat "$TS_RUN_DIR/diag.txt"
+}
+
 do_log() {
 	case "$1" in
 	service | "")
@@ -335,6 +372,7 @@ status) do_status "$2" ;;
 log) do_log "$2" ;;
 info) do_info ;;
 routes) sh "${TS_SCRIPTS_DIR}/routes.sh" show ;;
+diag) do_diag ;;
 help | -h | --help | "") usage ;;
 *)
 	echo "${scripts_name}: unknown command '$1'"

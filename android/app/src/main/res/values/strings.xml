@@ -127,12 +127,15 @@
     <string name="msg_exit_node_cleared">Stopped using exit node</string>
     <string name="vpn_detected">Another VPN is active (%1$s)</string>
     <string name="vpn_tailnet_ok">Tailnet devices still go through Tailscale</string>
-    <string name="vpn_subnets_kept">Subnet routes kept on Tailscale (%1$d rules)</string>
-    <string name="vpn_subnets_lost">Subnet routes go into the other VPN; turn on \"VPN coexistence\" in Settings</string>
+    <string name="vpn_subnets_kept">Tailnet and subnet routes kept on Tailscale (%1$d rules)</string>
+    <string name="vpn_subnets_lost">Turn on \"VPN coexistence\" in Settings so tailnet and subnet routes stay on Tailscale</string>
     <string name="vpn_internet_via_vpn">Other internet traffic uses that VPN</string>
     <string name="vpn_exit_node_inactive">The Tailscale exit node has no effect while that VPN is on</string>
     <string name="vpn_magicdns">MagicDNS names may not resolve; use 100.x addresses</string>
     <string name="private_dns_notice">Private DNS is on. It bypasses Tailscale DNS, so MagicDNS names will not resolve. Use 100.x addresses or turn Private DNS off in system settings.</string>
     <string name="pref_vpn_coexist">VPN coexistence</string>
-    <string name="pref_vpn_coexist_summary">Keep subnet routes on Tailscale while another VPN app is active</string>
+    <string name="pref_vpn_coexist_summary">Keep tailnet and subnet routes on Tailscale while another VPN app is active</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="diagnostics_summary">Routing, DNS and logs in one report to copy or share</string>
+    <string name="share">Share</string>
 </resources>

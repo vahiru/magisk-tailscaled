@@ -1,3 +1,24 @@
+## v3.2.0.0
+
+### Fixes
+- **Wi-Fi showed "no internet" while tailscaled ran.** The Android build redirects all DNS
+  to quad-100 (100.100.100.100), but never told quad-100 which servers to forward normal
+  names to, so every lookup outside the tailnet failed with SERVFAIL (including Android's
+  connectivity check). tailscaled now reads the DNS servers of the current network
+  (`dumpsys connectivity`, re-read on network changes), only redirects DNS when it has
+  them, and no longer redirects its own upstream queries back to itself.
+  Patch: `tailscaled/patches/`, built by `tailscaled/build.sh`.
+- **Tailnet unreachable while another VPN is on** (e.g. SSH to/from the device). VPN
+  coexistence now keeps every tailnet route (peers, quad-100, subnet routes) on Tailscale
+  with rules ahead of all Android network rules (priority 9510), and pins tailscaled's own
+  WireGuard / DERP traffic to the physical network (9500), also with VPN lockdown.
+
+### Other
+- New `tailscaled.service diag` (and "Diagnostics" in the app) collects routing, DNS and logs.
+- tailscaled and jq are now built from source in CI; the lightweight zip downloads them from
+  this repository's release instead of upstream.
+- App 1.2.0.
+
 ## v3.1.0.0
 
 ### VPN coexistence

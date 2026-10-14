@@ -1,5 +1,6 @@
 package io.github.vahiru.tailscaled.ui
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -166,6 +168,7 @@ fun App(vm: MainViewModel) {
                                         onDaemon = vm::setDaemon,
                                         onAutostart = vm::setAutostart,
                                         onVpnCoexist = vm::setVpnCoexist,
+                                        onDiagnostics = vm::runDiagnostics,
                                         onRestartDaemon = vm::restartDaemon,
                                         onShowLog = vm::showLog,
                                         onInstallModule = vm::installModule,
@@ -181,7 +184,22 @@ fun App(vm: MainViewModel) {
     }
 
     task?.let { t ->
-        TaskDialog(t, onDismiss = vm::dismissTask)
+        TaskDialog(
+            t,
+            onDismiss = vm::dismissTask,
+            extraAction = if (t.shareable) {
+                {
+                    val text = t.lines.joinToString("\n")
+                    TextButton(onClick = { ctx.copyToClipboard(t.title, text) }) { Text(stringResource(R.string.copy)) }
+                    TextButton(onClick = {
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+                        ctx.startActivity(Intent.createChooser(send, t.title))
+                    }) { Text(stringResource(R.string.share)) }
+                }
+            } else {
+                null
+            },
+        )
     }
 }
 
