@@ -252,6 +252,14 @@ private fun VpnCoexistCard(state: UiState) {
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
+            if (module.vpnIsolatedApps > 0) {
+                VpnLine(false, stringResource(R.string.vpn_isolation_on, module.vpnIsolatedApps))
+                Text(
+                    stringResource(R.string.vpn_isolation_fix),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(start = 30.dp),
+                )
+            }
             if (module.vpnCoexist) {
                 VpnLine(true, stringResource(R.string.vpn_subnets_kept, module.coexistRules))
             } else {

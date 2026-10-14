@@ -104,7 +104,7 @@ class ScreenshotTest {
         "home_vpn_zh.png",
         content = home(
             connected.copy(
-                module = module.copy(vpnInterfaces = listOf("tun0"), coexistRules = 6),
+                module = module.copy(vpnInterfaces = listOf("tun0"), coexistRules = 6, vpnIsolatedApps = 41),
                 privateDns = true,
                 prefs = prefs.copy(corpDns = true),
             ),

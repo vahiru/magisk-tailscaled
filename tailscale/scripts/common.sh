@@ -140,6 +140,20 @@ detach() {
 	exec nohup "$@"
 }
 
+# Android VPN "ingress isolation": for a VPN that is not bypassable, routes all
+# traffic and has no excluded routes, netd only lets the apps it covers receive
+# packets on the VPN interface (IIF_MATCH in the BPF uid owner map). Replies coming
+# back through tailscale0 are then dropped, so the tailnet looks dead in those apps.
+# Prints "<number of uids> <interface>" when active, nothing otherwise.
+vpn_isolation() {
+	dumpsys connectivity trafficcontroller 2>/dev/null | awk '
+		/IIF_MATCH/ && $1 ~ /^[0-9]+$/ { n++; iif = $NF }
+		END { if (n > 0) print n, iif }' | while read -r n iif; do
+		name="$(ip -o link show 2>/dev/null | awk -F': ' -v i="$iif" '$1 == i { sub(/@.*/, "", $2); print $2 }')"
+		echo "$n ${name:-if$iif}"
+	done
+}
+
 module_disabled() {
 	[ -f "${TS_MOD_DIR}/disable" ] || [ -f "${TS_MOD_DIR}/remove" ]
 }

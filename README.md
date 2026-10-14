@@ -69,6 +69,35 @@ Android's VPN rules (priority 13000), so it runs side by side with VPN apps:
 - Android *Private DNS* (DNS over TLS) bypasses Tailscale DNS, so MagicDNS does not work with it.
 - Problems? Run `su -c tailscaled.service diag` (or Settings → Diagnostics in the app) and attach the report.
 
+### Tailnet dead while a VPN app is on? (Android VPN ingress isolation)
+
+The most common reason for "Tailscale works until I turn on Clash / v2rayNG / …": since
+Android 10, when a VPN is **not bypassable**, **routes all traffic** and has **no excluded
+routes**, Android lets the apps it covers receive packets **only on the VPN interface**.
+Replies from tailnet devices arrive on `tailscale0` and are dropped by the kernel, so pings
+time out and SSH hangs, even though the module's routes are correct. No routing rule can
+work around it; it has to be changed in the VPN app.
+
+Check (with the VPN on): `su -c tailscaled.service info` shows `VPN isolation: ON`, the app's
+VPN card warns about it, or `su -c "dumpsys connectivity trafficcontroller | grep IIF_MATCH"`
+lists app uids.
+
+Fix it in the VPN app, any one of:
+
+| Option | Leaks? |
+|---|---|
+| Exclude `100.64.0.0/10` and `fd7a:115c:a1e0::/48` from the VPN (preferred) | No: only tailnet traffic skips the VPN, and it is WireGuard-encrypted anyway |
+| Allow apps to bypass the VPN | Apps that explicitly ask for the physical network can skip the VPN |
+| Exclude the app (e.g. Termux) from the VPN | All traffic of that app skips the VPN |
+
+- **FlClash**: Tools → Network → *Allow applications to bypass VPN*, then reconnect.
+  (In our tests *Route mode → Bypass private route address* still created a full `default`
+  route, so it did not lift the isolation.)
+- **mihomo / Clash Meta with its own TUN**: `tun: { route-exclude-address: [100.64.0.0/10, fd7a:115c:a1e0::/48] }`
+- **sing-box**: in the tun inbound, `"route_exclude_address": ["100.64.0.0/10", "fd7a:115c:a1e0::/48"]`
+
+Verify: `su -c "dumpsys connectivity trafficcontroller | grep IIF_MATCH"` prints nothing.
+
 ## Android app (Tailscaled Manager)
 
 A Material 3 (Material You) companion app in [`android/`](android/). It uses root (`su`) to talk to

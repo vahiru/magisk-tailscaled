@@ -138,4 +138,6 @@
     <string name="diagnostics">Diagnostics</string>
     <string name="diagnostics_summary">Routing, DNS and logs in one report to copy or share</string>
     <string name="share">Share</string>
+    <string name="vpn_isolation_on">This VPN blocks replies from Tailscale for %1$d apps: the tailnet will not work in them</string>
+    <string name="vpn_isolation_fix">Fix in the VPN app (any one): exclude 100.64.0.0/10 and fd7a:115c:a1e0::/48 from the VPN; or turn on \"Allow apps to bypass VPN\"; or exclude the app (e.g. Termux) from the VPN.</string>
 </resources>

@@ -44,6 +44,9 @@ class TailscaleRepository(private val context: Context) {
             if [ -f /data/adb/ap/bin/busybox ] || [ -x /data/adb/apd ]; then echo MGR=APatch
             elif [ -x /data/adb/ksud ] || [ -d /data/adb/ksu ]; then echo MGR=KernelSU
             elif [ -d /data/adb/magisk ]; then echo MGR=Magisk; fi
+            # Android VPN ingress isolation (IIF_MATCH), only worth checking while a VPN is up.
+            ip -o link show up 2>/dev/null | grep -qE ': (tun|ppp|wg|ipsec|utun)' &&
+                echo "ISOLATION=$(dumpsys connectivity trafficcontroller 2>/dev/null | grep -c IIF_MATCH)"
             [ -f $COMMON ] && echo "PID=$(sh -c '. $COMMON >/dev/null 2>&1; daemon_pid' 2>/dev/null)"
             true
         """.trimIndent()
@@ -66,6 +69,7 @@ class TailscaleRepository(private val context: Context) {
             vpnInterfaces = kv["VPNIF"].orEmpty().split(' ').filter { it.isNotBlank() },
             vpnCoexist = kv["COEXIST"] != "0",
             coexistRules = kv["COEXISTRULES"]?.toIntOrNull() ?: 0,
+            vpnIsolatedApps = kv["ISOLATION"]?.toIntOrNull() ?: 0,
         )
     }
 

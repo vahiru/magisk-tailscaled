@@ -166,6 +166,11 @@ data class ModuleInfo(
     val vpnCoexist: Boolean = true,
     /** Number of subnet route rules currently kept ahead of other VPNs. */
     val coexistRules: Int = 0,
+    /**
+     * Apps under Android's VPN ingress isolation (IIF_MATCH): they only accept packets
+     * from the VPN interface, so replies arriving via tailscale0 are dropped.
+     */
+    val vpnIsolatedApps: Int = 0,
 ) {
     val vpnActive: Boolean get() = vpnInterfaces.isNotEmpty()
 

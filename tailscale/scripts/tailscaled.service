@@ -143,6 +143,15 @@ do_info() {
 	echo "  jq           : $(have_jq && jq --version 2>/dev/null || echo 'not usable')"
 	echo "  Daemon args  : ${TS_DAEMON_ARGS}"
 	echo "  VPN coexist  : $([ "$TS_VPN_COEXIST" = 0 ] && echo off || echo on)"
+	iso="$(vpn_isolation)"
+	if [ -n "$iso" ]; then
+		echo "  VPN isolation: ON, ${iso% *} apps can only receive on ${iso#* }"
+		echo "                 -> tailnet replies to those apps are dropped by Android."
+		echo "                 Fix in the VPN app: exclude 100.64.0.0/10 + fd7a:115c:a1e0::/48,"
+		echo "                 or allow apps to bypass the VPN, or exclude the app from the VPN."
+	else
+		echo "  VPN isolation: off"
+	fi
 	echo "  VPN active   : $(ip -o link show 2>/dev/null | awk -F': ' '$2 ~ /^(tun|ppp|wg|ipsec)/ && $2 !~ /^tailscale/ {printf "%s ", $2}' | sed 's/@[^ ]*//g')"
 }
 
@@ -335,6 +344,8 @@ do_diag() {
 		section "iptables nat (DNS redirect)"
 		iptables -t nat -S OUTPUT 2>&1 | grep -E "53|ts-" | head -n 20
 		iptables -t nat -S PREROUTING 2>&1 | grep -E "53|ts-" | head -n 20
+		section "VPN ingress isolation (IIF_MATCH uids)"
+		dumpsys connectivity trafficcontroller 2>/dev/null | grep IIF_MATCH | head -n 30
 		section "Android networks (dumpsys connectivity)"
 		dumpsys connectivity 2>/dev/null | grep -E "Active default network|NetworkAgentInfo\{" | sed 's/nc{.*//' | head -n 12
 		echo "private_dns_mode=$(settings get global private_dns_mode 2>/dev/null)"

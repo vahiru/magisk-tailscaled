@@ -138,4 +138,6 @@
     <string name="diagnostics">诊断信息</string>
     <string name="diagnostics_summary">路由、DNS 和日志汇总成一份报告，可复制或分享</string>
     <string name="share">分享</string>
+    <string name="vpn_isolation_on">该 VPN 开启了入站隔离：%1$d 个 App 收不到 Tailscale 的回包，在这些 App 里 tailnet 不通</string>
+    <string name="vpn_isolation_fix">在 VPN 软件中任选一种：排除 100.64.0.0/10 和 fd7a:115c:a1e0::/48；或开启“允许应用绕过 VPN”；或将该 App（如 Termux）设为不走 VPN。</string>
 </resources>

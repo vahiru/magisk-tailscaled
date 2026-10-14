@@ -1,3 +1,10 @@
+## v3.2.1.0
+
+- Detect Android's VPN ingress isolation (`IIF_MATCH`), the usual reason the tailnet stops
+  working while another VPN app is on: shown in `tailscaled.service info` / `diag`, logged
+  by the daemon, and explained with fixes on the app's VPN card. See README.
+- App 1.2.1.
+
 ## v3.2.0.0
 
 ### Fixes

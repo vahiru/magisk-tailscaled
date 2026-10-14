@@ -133,8 +133,15 @@ clear_all() {
 case "$1" in
 loop)
 	# Runs until tailscaled exits, then cleans up after itself.
+	iso_last=""
 	while daemon_pid >/dev/null; do
 		sync_all
+		# Warn once per change: routing cannot fix Android's VPN ingress isolation.
+		iso="$(vpn_isolation)"
+		if [ "$iso" != "$iso_last" ]; then
+			[ -n "$iso" ] && log Warning "VPN ingress isolation on ${iso#* } (${iso% *} apps): Android drops tailnet replies to them. In the VPN app exclude 100.64.0.0/10 + fd7a:115c:a1e0::/48, allow apps to bypass the VPN, or exclude the app."
+			iso_last="$iso"
+		fi
 		sleep "$TS_ROUTE_INTERVAL"
 	done
 	clear_all
