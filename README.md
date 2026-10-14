@@ -17,49 +17,71 @@ Tailscale is a networking tool that allows you to connect each of your devices a
 
 The [Tailscale app](https://play.google.com/store/apps/details?id=com.tailscale.ipn) on the Play Store runs with Android's VPN, which means you can't use Tailscale while another VPN is active. This Magisk module, on the other hand, allows you to use both an Android VPN and Tailscale at the same time.
 
-## Requirements
+## Compatibility
 
-- A basic networking knowledge.
-- An Android device with Magisk root installed.
+| | Supported |
+|---|---|
+| Android | 8.0 (API 26) – 17 (API 37), including Android 16 / 17 |
+| Root | Magisk v20.4+, KernelSU (incl. KernelSU Next / SukiSU), APatch |
+| Kernel | GKI and non-GKI; 4 KB and 16 KB page size (checked at install, `jq` is optional) |
+| ABI | `arm64-v8a`, `armeabi-v7a` |
+
+Notes for KernelSU:
+
+- KernelSU 1.x/2.x only mounts a module's `system/` when a *metamodule* is installed.
+  This module does not depend on it: the installer also puts `tailscale`, `tailscaled`
+  and `tailscaled.service` wrappers into `/data/adb/ksu/bin` (or `/data/adb/ap/bin` on
+  APatch), which is always in the `su` PATH.
+- Enabling / disabling the module in the manager starts / stops `tailscaled` immediately,
+  no reboot needed.
+- The manager's **Action** button toggles the daemon and prints its status.
 
 ## Quick Start & Installation
 
-1. Download the latest zip file from the [Releases](https://github.com/anasfanani/Magisk-Tailscaled/releases/latest) page.
-2. Install the downloaded zip file using Magisk & reboot your phone.
-3. Open the Terminal.
-4. Login with `su -c tailscale login`
-5. Disable accept-dns `su -c tailscale set --accept-dns=false`
-6. Run 'tailscale login' to login to your Tailscale account.
-7. Open the URL in a browser to authorize your device.
-8. Run 'tailscale ip' to retrieve your Tailscale IP.
-9. Alternatively, you can open the [Tailscale Admin Dashboard](https://login.tailscale.com/admin/machines) to manage your devices.
+1. Download the latest zip from the [Releases](https://github.com/vahiru/magisk-tailscaled/releases/latest) page
+   (`-full.zip` ships the binaries, the small zip downloads them during install).
+2. Install it from Magisk / KernelSU / APatch. `tailscaled` starts right away, no reboot needed.
+3. Log in from a root shell:
+   ```sh
+   su -c tailscale login
+   ```
+4. Open the printed URL to authorize the device, then check with `su -c tailscaled.service status`.
 
-After installation, the Tailscale daemon (`tailscaled`) will run automatically on boot.
+If `tailscale` is not found before the first reboot, use the full path:
+`su -c /data/adb/tailscale/bin/tailscale login`.
 
-## Limitation
+## Files
 
-- This module only support for `arm` or `arm64` architecture, you can download manually for other architecture.
-- Tailscale binary is designed to run in Linux environment, Some feature might not works properly.
-- MagicDNS currently not working.
-- Runs in userspace mode, read more at [https://tailscale.com/kb/1112/userspace-networking](https://tailscale.com/kb/1112/userspace-networking) 
-- Subnet routes is manually routed with socks5-tun, you must define your own ip routes to `tailscaled.tun.up` and `tailscaled.tun.down`
+| Path | Purpose |
+|---|---|
+| `/data/adb/tailscale/bin/` | `tailscaled` (multicall, `tailscale` is a symlink), `jq` |
+| `/data/adb/tailscale/scripts/` | service scripts |
+| `/data/adb/tailscale/settings.conf` | user settings, kept across updates |
+| `/data/adb/tailscale/tailscaled.state` | node state, kept across updates |
+| `/data/adb/tailscale/run/tailscaled.log` | daemon log (`.bak` = previous run) |
+| `/data/adb/tailscale/run/service.log` | service manager log |
 
-## Usage of this module
+## Settings
 
-This module runs `tailscaled` with the following command:
+Edit `/data/adb/tailscale/settings.conf`, then run `su -c tailscaled.service restart`.
 
-```bash
-tailscaled -tun=userspace-networking -statedir=/data/adb/tailscale/tmp/ -state=/data/adb/tailscale/tmp/tailscaled.state -socket=/data/adb/tailscale/tmp/tailscaled.sock -port=41641
+```sh
+TS_DAEMON_ARGS="-no-logs-no-support"   # extra tailscaled flags
+TS_AUTOSTART=1                         # start on boot
+TS_STOP_TIMEOUT=10                     # seconds before SIGKILL on stop
+TS_LOG_MAX_KB=2048                     # log trim threshold
 ```
-The state file for tailscaled is stored at `/data/adb/tailscale/tmp/tailscaled.state`, and the log output is written to `/data/adb/tailscale/run/tailscaled.log`.
 
-## Available command
+## Available commands
 
-- `tailscale`: This command is execute tailscale operation.
-- `tailscaled`: This command is execute tailscaled daemon operation.
-- `tailscaled.service`: This command for manage tailscaled service, you can start,stop,restart daemon and view live logs the tailscaled operation.
-- `tailscaled.tun`: This command is for manage hev-socks5-tunnel.
-  
+- `tailscale`: the Tailscale CLI.
+- `tailscaled`: the Tailscale daemon.
+- `tailscaled.service`: service manager
+  - `start` / `stop` / `restart`
+  - `status [summary|peer|exit-node|all]`
+  - `log [daemon|service]`
+  - `info`: Android version, kernel, page size, root manager, binaries (include this in bug reports)
+
 ## Example of Using Tailscale
 
 ### SSH to Termux
@@ -172,42 +194,6 @@ For more details about CLI commands, check out the [Tailscale CLI documentation]
 
 Tailscale has manny issues. You can check them out [here](https://github.com/tailscale/tailscale/issues).
 
-### Cannot access other tailnet devices
-
-This module runs the `tailscaled` binary in userspace-networking mode. To access other devices in the tailnet, you must use a local proxy on port 1099. I've implemented a workaround using `hev-socks5-tunnel` to tunnel local socks5 on port 1099 and bind it to the interface named `tailscale0`. 
-
-Please note, this `tailscale0` interface is different from the original `tailscale0` interface on Linux. In Linux, `tailscale0` is managed by the `tailscaled` daemon, whereas in this module, `tailscale0` is managed by `hev-socks5-tunnel`. The default gateway is `100.100.100.100`, as defined in the `tailscaled.tun.config.yaml` file.
-
-This solution should work on most common devices. However, if you encounter problems accessing other tailnet devices, follow these troubleshooting steps:
-
-1. Verify that `tailscaled.service` is running. If not, restart it with `tailscaled.service restart`.
-2. Verify that `tailscaled.tun` is running. If not, restart it with `tailscaled.tun restart`.
-3. Check if your device is connected to tailscaled and try a ping connection with `tailscale ping <your_tailnet_ip>`.
-4. Verify the port you want to access is accessible. You can do this by accessing it with another tailscale device or using the Tailscale Android App.
-5. Check if the local socks5 server is working with curl. Execute the following command:
-    ```
-    curl 1.1.1.1 -vI -x localhost:1099
-    ```
-    If it connects, then the local socks5 server is running and working.
-
-6. Check if the local socks5 server can connect to the tailnet network.
-    ```
-    curl <your_tailnet_ip>:<port> -vI -x localhost:1099
-    ```
-    If it connects, then the local socks5 server is functioning correctly.
-
-7. Finally, check the connection directly with `curl <your_tailnet_ip>:<port> -vI`.
-
-If the last step fails, the problem likely lies with `socks5-tun`. Verify there is an interface named `tailscale0`. If it exists, the problem may be with the iptables route, either due to a conflict with another rule or some other issue. Feel free to explore your own solutions. If you're unable to resolve the issue, contact me on Telegram and I'll see if I can assist you.
-
-### My subnet-routes is'nt working
-
-Yes because we need define the routes with `iptables` in file `tailscaled.tun.up` and `tailscaled.tun.down`, you can check this [issue reference](https://github.com/anasfanani/Magisk-Tailscaled/issues/17).
-I suppose you're already know the iptables works, if dont, there are chatAI to ask.
-You can copy whole `tailscaled.tun.up` script to chatAI and send instruction with please add 192.168.1.1/24 to this route, also dont forget `tailscaled.tun.down` 
-
-If you still can't do it by yourself, I'm verry welcome to people who needs help.
-
 ### Exit nodes
 
 You can check this [issue reference](https://github.com/anasfanani/Magisk-Tailscaled/issues/17).
@@ -228,11 +214,11 @@ You can explore to the issue tab, if there not exists, you can open issue, for h
 
 1. Restart tailscaled with `tailscaled.service restart`
 2. Reproduce what are you doing which has problem.
-3. Get log at `/data/adb/tailscale/run/tailscaled.log`
+3. Attach the output of `tailscaled.service info` and the logs in `/data/adb/tailscale/run/`
 
 ## Notes
 
-This module is confirmed to be supported for KernelSU, as [confirmed by the author of KernelSU](https://github.com/anasfanani/Magisk-Tailscaled/issues/2#issue-2055047162). If you encounter any problems, please let me know.
+This module supports Magisk, KernelSU (and forks) and APatch. KernelSU support was originally [confirmed by the author of KernelSU](https://github.com/anasfanani/Magisk-Tailscaled/issues/2#issue-2055047162).
 
 For more information, check out the links below:
 

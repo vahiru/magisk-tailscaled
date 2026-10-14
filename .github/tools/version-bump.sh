@@ -2,6 +2,8 @@
 set -e
 
 BUMP_TYPE="${1:-patch}"
+REPO="${GITHUB_REPOSITORY:-vahiru/magisk-tailscaled}"
+BRANCH="${DEFAULT_BRANCH:-main}"
 
 if [[ ! "$BUMP_TYPE" =~ ^(major|minor|patch|build)$ ]]; then
   echo "Usage: $0 [major|minor|patch|build]"
@@ -50,8 +52,8 @@ sed -i "s/^versionCode=.*/versionCode=$NEW_VERSION_CODE/" module.prop
 # TODO: Remove update-arm.json and update-arm64.json, use single update.json instead
 # Update all JSON files
 for json_file in update.json update-arm.json update-arm64.json; do
-  jq --arg v "$NEW_VERSION" --arg vc "$NEW_VERSION_CODE" \
-    '.version = $v | .versionCode = $vc | .zipUrl = "https://github.com/anasfanani/Magisk-Tailscaled/releases/download/\($v)/Magisk-Tailscaled-\($v).zip" | .changelog = "https://raw.githubusercontent.com/anasfanani/Magisk-Tailscaled/master/CHANGELOG.md"' \
+  jq --arg v "$NEW_VERSION" --arg vc "$NEW_VERSION_CODE" --arg repo "$REPO" --arg branch "$BRANCH" \
+    '.version = $v | .versionCode = $vc | .zipUrl = "https://github.com/\($repo)/releases/download/\($v)/Magisk-Tailscaled-\($v).zip" | .changelog = "https://raw.githubusercontent.com/\($repo)/\($branch)/CHANGELOG.md"' \
     "$json_file" > "${json_file}.tmp" && mv "${json_file}.tmp" "$json_file"
 done
 

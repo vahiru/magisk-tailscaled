@@ -1,184 +1,189 @@
 #!/system/bin/sh
-
-# DEBUG=1
-[ -n "${DEBUG:-}" ] && {
-	PS4="+ \${0##*/}:\${LINENO}: "
-	set -e
-	set -u
-	set -x
-	set
-} || true
-
-# Github download helper
-gh_download() {
-	REPO=$1
-	MATCH=$2
-	DOWNLOAD_URL=$(
-		wget --no-check-certificate --timeout=10 -qO- "https://api.github.com/repos/${REPO}/releases/latest" |
-			grep "browser_download_url" |
-			grep "${MATCH}" |
-			sed 's/.*"browser_download_url": "\([^"]*\)".*/\1/' ||
-			true
-	)
-	if [ -z "$DOWNLOAD_URL" ]; then
-		ui_print "! Unable to get release from https://github.com/${REPO}/releases"
-		return 1
-	fi
-	FILENAME=$(basename "$DOWNLOAD_URL")
-	ui_print "- Downloading $FILENAME..."
-	wget --no-check-certificate --timeout=100 -qO "$TMPDIR/$FILENAME" "$DOWNLOAD_URL" || {
-		ui_print "! Download timeout or failed"
-		return 1
-	}
-}
+# Installer for Magisk (v20.4+), KernelSU (and forks) and APatch.
+# Tested targets: Android 8 (API 26) through Android 17 (API 37).
 
 # shellcheck disable=SC2034
 SKIPUNZIP=1
-# shellcheck disable=SC2034
-SKIPMOUNT=false
-
-if [ "$BOOTMODE" != true ]; then
-	ui_print "! Please install in Magisk Manager or KernelSU Manager"
-	ui_print "! Install from recovery is NOT supported"
-	abort "-----------------------------------------------------------"
-elif [ "$KSU" = true ] && [ "$KSU_VER_CODE" -lt 10670 ]; then
-	abort "error: Please update your KernelSU and KernelSU Manager"
-fi
-
-SERVICE_DIR="/data/adb/service.d"
 
 TS_DIR="/data/adb/tailscale"
 TS_BIN_DIR="$TS_DIR/bin"
 TS_SCRIPTS_DIR="$TS_DIR/scripts"
 
-case $ARCH in
-arm) F_ARCH="armv7a" ;;
-arm64) F_ARCH="aarch64" ;;
-*)
-	ui_print "Unsupported architecture: $ARCH"
-	abort
-	;;
-esac
-ui_print "- Detected architecture: $ARCH"
+[ -n "${DEBUG:-}" ] && set -x
 
-if [ -d "$TS_DIR" ]; then
-	[ -f "$TS_DIR/tmp/tailscaled.state" ] && mv -f "$TS_DIR/tmp/tailscaled.state" "$TS_DIR/tailscaled.state"
-	ui_print "- Backup old files"
-	PROP_FILE="$(echo "$MODPATH" | sed 's/_update//')/module.prop"
-	[ ! -f "$PROP_FILE" ] && PROP_FILE="$MODPATH/module.prop"
-	versionCode=$(grep '^versionCode=' "$PROP_FILE" | cut -d= -f2)
-	# shellcheck disable=SC2154
-	rm -rf "$TS_DIR/backups/$versionCode/" && mkdir -p "$TS_DIR/backups/$versionCode/"
-	for p in "$TS_DIR"/*; do
-		case "$(basename "$p")" in
-		ssh | certs | backups | tailscaled.state) ;;
-		*)
-			mv -f -- "$p" "$TS_DIR/backups/$versionCode/"
-			;;
-		esac
-	done
+if [ "$BOOTMODE" != true ]; then
+	ui_print "! Please install from the Magisk / KernelSU / APatch app."
+	abort "! Installing from recovery is NOT supported."
 fi
 
-mkdir -p "$TS_BIN_DIR"
-unzip -qqjo "$ZIPFILE" "tailscale/bin/*-$ARCH" -d "$TS_BIN_DIR" 2>/dev/null || true
-for f in "$TS_BIN_DIR"/*-"$ARCH"; do
-	[ -f "$f" ] && mv "$f" "${f%-"$ARCH"}"
+if [ "$APATCH" = true ]; then
+	ROOT_MGR="APatch ${APATCH_VER:-} (${APATCH_VER_CODE:-?})"
+elif [ "$KSU" = true ]; then
+	ROOT_MGR="KernelSU ${KSU_KERNEL_VER_CODE:-${KSU_VER_CODE:-?}}"
+	[ -n "$KSU_VER_CODE" ] && [ "$KSU_VER_CODE" -lt 10670 ] && abort "! Please update KernelSU and the KernelSU Manager."
+else
+	ROOT_MGR="Magisk ${MAGISK_VER:-} (${MAGISK_VER_CODE:-?})"
+fi
+
+API="${API:-$(getprop ro.build.version.sdk)}"
+ui_print "- Root manager : $ROOT_MGR"
+ui_print "- Android      : $(getprop ro.build.version.release) (API $API)"
+ui_print "- Kernel       : $(uname -r)"
+ui_print "- Architecture : $ARCH"
+
+if [ "$API" -lt 26 ]; then
+	abort "! Android 8.0 (API 26) or newer is required."
+elif [ "$API" -gt 37 ]; then
+	ui_print "! Android API $API is newer than this module was tested on (37), continuing anyway."
+fi
+
+case "$ARCH" in
+arm) JQ_ARCH="armv7a" ;;
+arm64) JQ_ARCH="aarch64" ;;
+*) abort "! Unsupported architecture: $ARCH (only arm / arm64)." ;;
+esac
+
+# Download helper, only used by the lightweight zip that ships without binaries.
+fetch() {
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL --connect-timeout 10 -m "${3:-100}" -o "$2" "$1"
+	else
+		wget --no-check-certificate -T "${3:-100}" -qO "$2" "$1"
+	fi
+}
+gh_download() {
+	repo="$1"
+	match="$2"
+	fetch "https://api.github.com/repos/${repo}/releases/latest" "$TMPDIR/release.json" 15 || {
+		ui_print "! Unable to query https://github.com/${repo}/releases"
+		return 1
+	}
+	url="$(grep '"browser_download_url"' "$TMPDIR/release.json" | grep "$match" | head -n 1 |
+		sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')"
+	[ -n "$url" ] || {
+		ui_print "! No asset matching '$match' in ${repo}"
+		return 1
+	}
+	FILENAME="$(basename "$url")"
+	ui_print "- Downloading $FILENAME..."
+	fetch "$url" "$TMPDIR/$FILENAME" 300 || {
+		ui_print "! Download failed"
+		return 1
+	}
+}
+
+# Stop the running daemon (any older version) before replacing its binary.
+if [ -x "$TS_SCRIPTS_DIR/tailscaled.service" ]; then
+	ui_print "- Stopping running tailscaled"
+	"$TS_SCRIPTS_DIR/tailscaled.service" stop >/dev/null 2>&1
+fi
+if [ -f "$TS_DIR/run/watcher.pid" ]; then
+	kill -9 "$(cat "$TS_DIR/run/watcher.pid")" 2>/dev/null
+fi
+# v2.x watcher
+for d in /proc/[0-9]*; do
+	grep -q "tailscaled.inotify" "$d/cmdline" 2>/dev/null && kill -9 "${d#/proc/}" 2>/dev/null
 done
 
-[ -f "$TS_BIN_DIR/tailscaled" ] || {
-	gh_download "anasfanani/tailscale-android-cli" "tailscale_.*_${ARCH}\.tgz" || abort "error: Unable to download."
-	tar -xzf "$TMPDIR/$FILENAME" -C $TS_BIN_DIR || abort "error: Unable extract archive."
-}
+# Keep state (tailscaled.state, certs, ssh, settings.conf, ...); replace only code.
+mkdir -p "$TS_DIR"
+[ -f "$TS_DIR/tmp/tailscaled.state" ] && [ ! -f "$TS_DIR/tailscaled.state" ] &&
+	mv -f "$TS_DIR/tmp/tailscaled.state" "$TS_DIR/tailscaled.state"
+rm -rf "$TS_BIN_DIR" "$TS_SCRIPTS_DIR" "$TS_DIR/settings.sh"
+mkdir -p "$TS_BIN_DIR" "$TS_SCRIPTS_DIR" "$TS_DIR/run"
 
-[ -f "$TS_BIN_DIR/jq" ] || {
-	gh_download "theshoqanebi/jq-build-for-android" "jq-${F_ARCH}-linux-android" || abort "error: Unable to download."
-	mv -f "$TMPDIR/$FILENAME" "$TS_BIN_DIR/jq" || abort "error: Unable to move file."
-}
+ui_print "- Installing binaries"
+unzip -qqjo "$ZIPFILE" "tailscale/bin/*-$ARCH" -d "$TS_BIN_DIR" 2>/dev/null
+for f in "$TS_BIN_DIR"/*-"$ARCH"; do
+	[ -f "$f" ] && mv -f "$f" "${f%-"$ARCH"}"
+done
 
-ui_print "- Extracting files..."
-unzip -qqo "$ZIPFILE" -x 'META-INF/*' 'tailscale/*' -d "$MODPATH"
+if [ ! -f "$TS_BIN_DIR/tailscaled" ]; then
+	gh_download "anasfanani/tailscale-android-cli" "tailscale_.*_${ARCH}\.tgz" || abort "! Unable to download tailscaled, use the -full.zip instead."
+	tar -xzf "$TMPDIR/$FILENAME" -C "$TS_BIN_DIR" || abort "! Unable to extract $FILENAME"
+fi
+if [ ! -f "$TS_BIN_DIR/jq" ]; then
+	if gh_download "theshoqanebi/jq-build-for-android" "jq-${JQ_ARCH}-linux-android"; then
+		mv -f "$TMPDIR/$FILENAME" "$TS_BIN_DIR/jq"
+	else
+		ui_print "! jq not available, 'tailscaled.service status' will show plain output."
+	fi
+fi
+rm -f "$TS_BIN_DIR/tailscale"
+ln -s tailscaled "$TS_BIN_DIR/tailscale"
 
-mkdir -p "$TS_DIR" "$TS_SCRIPTS_DIR" "$SERVICE_DIR" "$MODPATH/system/bin/"
+ui_print "- Installing scripts"
 unzip -qqjo "$ZIPFILE" 'tailscale/scripts/*' -d "$TS_SCRIPTS_DIR"
-unzip -qqjo "$ZIPFILE" 'tailscale/settings.sh' -d "$TS_DIR"
-ln -sf "$TS_BIN_DIR/tailscaled" "$TS_BIN_DIR/tailscale"
-ln -sf "$TS_BIN_DIR/"* "$MODPATH/system/bin/"
+if [ ! -f "$TS_DIR/settings.conf" ]; then
+	unzip -qqjo "$ZIPFILE" 'tailscale/settings.conf' -d "$TS_DIR"
+fi
 
-ln -sf "$TS_SCRIPTS_DIR/tailscaled.service" "$MODPATH/system/bin/"
+ui_print "- Extracting module files"
+unzip -qqo "$ZIPFILE" module.prop service.sh action.sh uninstall.sh -d "$MODPATH"
+
+# Thin wrappers instead of symlinks: they work with Magisk magic mount, KernelSU
+# metamodules (overlayfs or magic mount) and APatch, and on SELinux-enforcing
+# Android 16/17 builds that refuse to follow /system symlinks into /data.
+write_wrapper() {
+	cat >"$1" <<EOF
+#!/system/bin/sh
+exec $2 "\$@"
+EOF
+	chmod 0755 "$1"
+}
+mkdir -p "$MODPATH/system/bin"
+write_wrapper "$MODPATH/system/bin/tailscale" "$TS_BIN_DIR/tailscale"
+write_wrapper "$MODPATH/system/bin/tailscaled" "$TS_BIN_DIR/tailscaled"
+write_wrapper "$MODPATH/system/bin/tailscaled.service" "$TS_SCRIPTS_DIR/tailscaled.service"
+
+# KernelSU 1.x/2.x only mounts system/ when a metamodule is installed. Its su (and
+# APatch's) always has its own bin dir in PATH, so put the wrappers there as well.
+for d in /data/adb/ksu/bin /data/adb/ap/bin; do
+	[ -d "$d" ] || continue
+	for f in tailscale tailscaled tailscaled.service; do
+		if [ ! -e "$d/$f" ] || grep -q "/data/adb/tailscale/" "$d/$f" 2>/dev/null; then
+			cp -f "$MODPATH/system/bin/$f" "$d/$f" && chmod 0755 "$d/$f"
+		fi
+	done
+done
 
 ui_print "- Setting permissions"
-set_perm_recursive "$TS_BIN_DIR/" 0 0 0755 0755 "u:object_r:system_file:s0"
-set_perm_recursive "$TS_SCRIPTS_DIR/" 0 0 0755 0755 "u:object_r:system_file:s0"
-set_perm_recursive "$MODPATH/system/bin/" 0 0 0755 0755 "u:object_r:system_file:s0"
-set_perm "$MODPATH/service.sh" 0 0 0755 "u:object_r:system_file:s0"
+set_perm_recursive "$MODPATH" 0 0 0755 0644
+set_perm_recursive "$MODPATH/system/bin" 0 2000 0755 0755
+set_perm "$MODPATH/service.sh" 0 0 0755
+set_perm "$MODPATH/action.sh" 0 0 0755
+set_perm "$MODPATH/uninstall.sh" 0 0 0755
+set_perm_recursive "$TS_BIN_DIR" 0 0 0755 0755 u:object_r:system_file:s0
+set_perm_recursive "$TS_SCRIPTS_DIR" 0 0 0755 0755 u:object_r:system_file:s0
+chmod 0755 "$TS_DIR"
+[ -f "$TS_DIR/tailscaled.state" ] && chmod 0600 "$TS_DIR/tailscaled.state"
 
-if [ ! -f "$SERVICE_DIR/tailscaled_service.sh" ]; then
-	# offer to move module scripts to general scripts
-	ui_print "-----------------------------------------------------------"
-	ui_print "- Do you want to move Module Scripts to General Scripts ?"
-	ui_print "- This option allows you to toggle the 'tailscaled' service"
-	ui_print "  on or off by enabling or disabling modules."
-	ui_print "- Your service directory is :"
-	ui_print "  '$SERVICE_DIR'."
-	ui_print "- Because the Developer Guides mentioned :"
-	ui_print "  Modules should NOT add general scripts during installation."
-	ui_print "- I offer this option to you."
-	ui_print "- You have 10 seconds to make a selection. Default is [Yes]."
-	ui_print "- [ Vol UP(+): Yes ]"
-	ui_print "- [ Vol DOWN(-): No ]"
-	timeout 10 sh -c '
-  while true; do
-    if getevent -lc 1 2>&1 | grep -q KEY_VOLUMEUP; then
-      echo "up"
-      break
-    elif getevent -lc 1 2>&1 | grep -q KEY_VOLUMEDOWN; then
-      echo "down"
-      break
-    fi
-  done
-' >"$TMPDIR/choice" || true
+# Catch wrong-ABI or 16 KB page-size incompatible binaries now, not at boot.
+if ! TS_VER="$("$TS_BIN_DIR/tailscaled" --version 2>&1)"; then
+	ui_print "! tailscaled failed to run on this device:"
+	ui_print "  $(echo "$TS_VER" | head -n 3)"
+	abort "! Aborting installation."
+fi
+ui_print "- tailscaled   : $(echo "$TS_VER" | head -n 1)"
+if [ -x "$TS_BIN_DIR/jq" ] && ! "$TS_BIN_DIR/jq" -n 1 >/dev/null 2>&1; then
+	ui_print "! jq cannot run on this kernel (page size $(getconf PAGESIZE 2>/dev/null)), status falls back to plain output."
+fi
 
-	choice=$(cat "$TMPDIR/choice" 2>/dev/null)
-	if [ "$choice" = "up" ] || [ -z "$choice" ]; then
-		ui_print "- [Yes] Move Module Scripts to General Scripts."
-		mv -f "$MODPATH/service.sh" "$SERVICE_DIR/tailscaled_service.sh"
-	else
-		ui_print "- [No] Skip and keep using Module Scripts."
-	fi
+# Leftovers from v2.x
+rm -f /data/adb/service.d/tailscaled_service.sh
+rm -f /dev/tailscale /dev/tailscaled /dev/tailscaled.service
+
+ui_print "- Starting tailscaled in background"
+"$TS_SCRIPTS_DIR/start.sh" postinstall >/dev/null 2>&1 &
+
+ui_print "-----------------------------------------------------------"
+if [ ! -f "$TS_DIR/tailscaled.state" ]; then
+	ui_print "  First time? From a root shell run:"
+	ui_print "    su -c '$TS_BIN_DIR/tailscale login'"
 else
-	ui_print "- Move General Scripts."
-	mv -f "$MODPATH/service.sh" "$SERVICE_DIR/tailscaled_service.sh"
+	ui_print "  Manage the daemon with:"
 fi
-ui_print "- Starting service in background."
-${TS_SCRIPTS_DIR}/start.sh postinstall 2>&1 &
-if [ ! -f "/system/bin/tailscale" ] || ! cmp --silent "/system/bin/tailscale" "$MODPATH/system/bin/tailscale"; then
-	ui_print "- Link file to /dev/."
-	ln -sf "$TS_SCRIPTS_DIR/tailscaled.service" /dev/tailscaled.service
-	ln -sf "$TS_BIN_DIR/tailscaled" /dev/tailscaled
-	ln -sf "$TS_BIN_DIR/tailscaled" /dev/tailscale
-	ui_print "-----------------------------------------------------------"
-	ui_print " Instructions       "
-	ui_print "-----------------------------------------------------------"
-	ui_print "- If you not reboot, execute with /dev/tailscale or /dev/tailscaled.service."
-	ui_print "- After reboot, you can use tailscale and tailscaled.service directly."
-	if [ ! -f "$TS_DIR/tailscaled.state" ]; then
-		ui_print "- Quickstart to new user :"
-		ui_print "  su -c '/dev/tailscale login'"
-		ui_print "  su -c '/dev/tailscaled.service status'"
-		ui_print "- Read the README.md"
-	else
-		ui_print "- Tailscaled service manager :"
-		ui_print "  su -c '/dev/tailscaled.service'"
-	fi
-else
-	if [ ! -f "$TS_DIR/tailscaled.state" ]; then
-		ui_print "- Quickstart to login :"
-		ui_print "  su -c 'tailscale login'"
-		ui_print "  su -c 'tailscaled.service status'"
-		ui_print "- Read the README.md"
-	else
-		ui_print "- Tailscaled service manager :"
-		ui_print "  su -c 'tailscaled.service'"
-	fi
-fi
-[ -n "${DEBUG:-}" ] && { set +ue; } || true
+ui_print "    su -c '$TS_SCRIPTS_DIR/tailscaled.service status'"
+ui_print "  After reboot 'tailscale' and 'tailscaled.service' are in PATH."
+ui_print "  Settings: $TS_DIR/settings.conf"
+ui_print "-----------------------------------------------------------"

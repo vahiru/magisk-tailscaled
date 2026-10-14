@@ -1,187 +1,129 @@
 #!/system/bin/sh
-# @title Tailscaled Service Manager
-# @header Manage and customize how tailscaled runs on your Android.
-#
-# @cmd start | Start tailscaled service
-# @desc Read configuration file in ${TS_DIR}/ and store output log to ${TS_LOG_FILE} then write pid file to ${TS_RUN_DIR}.
-#
-# @cmd stop | Stop tailscaled service
-# @desc Kill with signal 15, waiting to process doing self cleanup, if still running, then force kill.
-#
-# @cmd restart | Restart tailscaled service
-# @desc Kill, waiting, then start the process again, this command also rename file log to ${TS_LOG_FILE}.bak, always have .bak from last running process.
-#
-# @cmd status | Show current process status
-# @sub summary | Show summary with Self info and peer counts (default)
-# @sub peer | Show all peers (online/offline)
-# @sub exit-node | Show all exit nodes
-# @sub all | Show everything (Self + peers + exit nodes)
-# @desc Retrieving info from daemon, useful for inspect current running process.
-#
-# @cmd log | Logging tools
-# @sub daemon | Tailscaled daemon log (follow mode)
-# @sub service | Service operation log
-# @desc View logs from tailscaled daemon, service.
-#
-# @cmd help | Show this help message
-# @sub all | Show detailed descriptions for all commands
-#
-set -e
-DIR=$(dirname "$(realpath "$0")")
-# shellcheck source=../settings.sh
-. "$DIR"/../settings.sh
-scripts_name=$(basename "$0")
+# Tailscaled Service Manager
+# Manage how tailscaled runs on rooted Android (Magisk / KernelSU / APatch).
 
-program(){
+DIR="$(dirname "$(realpath "$0")")"
+# shellcheck source=common.sh
+. "$DIR/common.sh"
+scripts_name="$(basename "$0")"
 
-  # logdir
-  # command
-  # pre_up
-  # pre_down
-  # post_up
-  # post_down
+usage() {
+	cat <<USAGE
+Tailscaled Service Manager
+usage: ${scripts_name} <command> [option]
 
-  # log Debug "logdir ${logdir}"
-  # log Debug "command ${command}"
-  # log Debug "pre_up ${pre_up}"
-  # log Debug "pre_down ${pre_down}"
-  # log Debug "post_up ${post_up}"
-  # log Debug "post_down ${post_down}"
+  start                 Start tailscaled
+  stop                  Stop tailscaled (SIGTERM, then SIGKILL after ${TS_STOP_TIMEOUT}s)
+  restart               Restart tailscaled
+  status [mode]         Show status, mode: summary (default) | peer | exit-node | all
+  log [daemon|service]  Follow the daemon log or show the service log
+  info                  Show environment info (Android / kernel / root manager)
+  help                  Show this message
 
-  program_name=$(echo "$command" | awk '{print $1}' | xargs basename)
-  log_file="${logdir}/${program_name}.log"
-  pid_file="${logdir}/${program_name}.pid"
-  is_running(){
-    if PID=$(busybox pgrep -f "${command}"); then
-      log Info "✔ ${program_name} service is running with PID: ${PID}."
-      return 0
-    fi
-    return 1
-  }
-  start(){
-    log Info "Starting ${program_name} service."
-    if is_running; then return 0; fi 
-    if ! command -v "$program_name" > /dev/null 2>&1; then log Error "program not found: ${program_name}"; return 1; fi
-    [ -f "${log_file}" ] && mv "${log_file}" "${log_file}.bak" # log for old output
-    if [ ! -z "${pre_up}" ];then $pre_up  2>&1; fi
-    # shellcheck disable=SC2086
-    nohup $command > "${logdir}/${program_name}.log" 2>&1 &
-    PID=$!
-    # log Debug "Command: ${command}"
-    sleep 3 # waiting for program really started
-    PID_INFO=$(ps -p $PID -o pid,stime | grep $PID)
-    if [ -n "$PID_INFO" ]; then
-      # shellcheck disable=SC2086
-      set -- $PID_INFO
-      pid=$1
-      stime=$2
-      log Info "✔ ${program_name} service success running with PID: ${pid}, Start time: $stime."
-      echo "$pid" > "${pid_file}"
-      if [ ! -z "${post_up}" ];then ${post_up} 2>&1; fi
-      return 0
-    else
-      log Error "No process with PID $PID found."
-      return 1
-    fi
-  }
-  stop(){
-    log Info "Stopping ${program_name} service."
-    if PID=$(busybox pgrep -f "${command}"); then
-      if [ ! -z "${pre_down}" ];then $pre_down  2>&1; fi
-      # Use `busybox pkill` to kill the binary with signal 15, otherwise use `killall`.
-      if busybox pkill -f -15 -e "${command}" >/dev/null 2>&1; then
-        : # Do nothing if busybox pkill is successful
-      else
-        busybox killall "${program_name}" >/dev/null 2>&1 || busybox kill -15 "$PID" >/dev/null 2>&1
-      fi
-    else
-      log Info "✘ ${program_name} service is not running."
-      [ -t 1 ] && echo "${yellow}--------------------------------------------${normal}"
-      return 0
-    fi
-    sleep 3 # wait the binary has stopped properly
-    if ! busybox pgrep -f "${command}" >/dev/null 2>&1; then
-      log Info "✘ ${program_name} shutting down, service is stopped."
-      log Info "✘ ${program_name} disconnected."
-      if [ ! -z "${post_down}" ];then $post_down  2>&1; fi
-      [ -t 1 ] && echo "${yellow}--------------------------------------------${normal}"
-      return 0
-    else
-      log Warning "⚠️ ${program_name} Not stopped; may still be shutting down or failed to shut down."
-      # try forcing it to shut down.
-      log Warning "⚠️ try forcing it to shut down."
-      # Use `busybox pkill` to kill the binary with signal 9, otherwise use `killall`.
-      if busybox pkill -9 "${command}"; then
-        : # Do nothing if busybox pkill is successful
-      else
-        if command -v killall >/dev/null 2>&1; then
-          killall -9 "${program_name}" >/dev/null 2>&1 || true
-        else
-          pkill -9 "${program_name}" >/dev/null 2>&1 || true
-        fi
-      fi
-      sleep 2
-      if ! busybox pgrep -f "${command}" >/dev/null 2>&1; then
-        log Info "✔ done, you can sleep peacefully."
-        if [ ! -z "${post_down}" ];then post_down  2>&1; fi
-        [ -t 1 ] && echo "${yellow}--------------------------------------------${normal}"
-        return 0
-      fi
-    fi
-  }
-  restart(){
-    log Info "Restarting ${program_name} service."
-    program stop 
-    sleep 0.5
-    program start
-  }
-  
-  $1
+Settings: ${TS_CONF}
+Logs:     ${TS_RUN_DIR}
+USAGE
 }
 
-_tailscaled(){
-  logdir="${TS_DIR}/run"
-  command="${TS_DAEMON_CMD}"
-  tailscaled_up(){
-    sed -Ei "s/^description=(\[.*][[:space:]]*)?/description=[ ⏲ $CURRENT_TIME | ✔ tailscaled service is running!!! ] /g" "$TS_MOD_PROP"
-  }
-  tailscaled_down(){
-    sed -Ei "s/^description=(\[.*][[:space:]]*)?/description=[ ⏲ $CURRENT_TIME | ✘ tailscaled shutting down, service is stopped !!! ] /g" "$TS_MOD_PROP"
-  }
-  pre_up=""
-  pre_down=""
-  post_up="tailscaled_up"
-  post_down="tailscaled_down"
-  case "$1" in
-    status)
-      program is_running
-    ;;
-    start)
-      if ! program is_running && ! program start; then
-        log Warning "Got unfriendly response after start tailscaled !"
-        return 1
-      fi
-      return 0
-    ;;
-    restart)
-      log Info "Stopping !"
-      _tailscaled stop
-      log Info "Stop success !"
-      sleep 1
-      log Info "Restarting !"
-      _tailscaled start
-      log Info "Restart success !"
-    ;;
-    stop)
-      if ! program stop; then
-        log Error "Got unfriendly response after stop tailscaled !"
-        return 1
-      fi
-    ;;
-  esac
+do_start() {
+	if pid="$(daemon_pid)"; then
+		log Info "tailscaled is already running (PID ${pid})."
+		set_description "✔ running"
+		return 0
+	fi
+	if [ ! -x "$TS_DAEMON_BIN" ]; then
+		log Error "tailscaled binary not found: ${TS_DAEMON_BIN}"
+		return 1
+	fi
+	log Info "Starting tailscaled."
+	[ -f "$TS_LOG_FILE" ] && mv -f "$TS_LOG_FILE" "${TS_LOG_FILE}.bak"
+	cd "$TS_DIR" || return 1
+	# shellcheck disable=SC2086
+	detach "$TS_DAEMON_BIN" $TS_DAEMON_ARGS </dev/null >>"$TS_LOG_FILE" 2>&1 &
+	echo "$!" >"$TS_PID_FILE"
+
+	i=0
+	while [ "$i" -lt 10 ]; do
+		sleep 1
+		i=$((i + 1))
+		if ! pid="$(daemon_pid)"; then
+			break
+		fi
+		# `status --json` succeeds as soon as the local API answers, logged in or not.
+		timeout 3 "$TS_CLI_BIN" status --json >/dev/null 2>&1 && break
+	done
+
+	if pid="$(daemon_pid)"; then
+		echo "$pid" >"$TS_PID_FILE"
+		log Success "tailscaled is running (PID ${pid})."
+		set_description "✔ running"
+		return 0
+	fi
+	rm -f "$TS_PID_FILE"
+	log Error "tailscaled exited right after start, last log lines:"
+	tail -n 15 "$TS_LOG_FILE" 2>/dev/null | while IFS= read -r l; do log Error "  $l"; done
+	set_description "✘ failed to start, see ${TS_LOG_FILE}"
+	return 1
 }
 
-status_tailscaled(){
+do_stop() {
+	if ! pid="$(daemon_pid)"; then
+		log Info "tailscaled is not running."
+		rm -f "$TS_PID_FILE"
+		set_description "✘ stopped"
+		return 0
+	fi
+	log Info "Stopping tailscaled (PID ${pid})."
+	kill -15 "$pid" 2>/dev/null
+	i=0
+	while is_daemon_pid "$pid" && [ "$i" -lt "$TS_STOP_TIMEOUT" ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+	if is_daemon_pid "$pid"; then
+		log Warning "tailscaled did not exit in ${TS_STOP_TIMEOUT}s, sending SIGKILL."
+		kill -9 "$pid" 2>/dev/null
+		sleep 1
+	fi
+	# Catch strays, e.g. a second copy started by an older module version.
+	while pid="$(daemon_pid)"; do
+		kill -9 "$pid" 2>/dev/null
+		sleep 1
+	done
+	rm -f "$TS_PID_FILE"
+	log Success "tailscaled stopped."
+	set_description "✘ stopped"
+	return 0
+}
+
+do_restart() {
+	do_stop
+	sleep 1
+	do_start
+}
+
+have_jq() {
+	command -v jq >/dev/null 2>&1 && jq -n 1 >/dev/null 2>&1
+}
+
+do_info() {
+	printf "%bEnvironment%b\n" "$blue" "$normal"
+	echo "  Android      : $(getprop ro.build.version.release) (API $(getprop ro.build.version.sdk))"
+	echo "  Device       : $(getprop ro.product.manufacturer) $(getprop ro.product.model)"
+	echo "  Kernel       : $(uname -r)"
+	echo "  ABI          : $(getprop ro.product.cpu.abi)"
+	echo "  Page size    : $(getconf PAGESIZE 2>/dev/null || echo unknown)"
+	echo "  SELinux      : $(getenforce 2>/dev/null || echo unknown)"
+	echo "  Root manager : $(root_manager)"
+	echo "  Busybox      : ${BUSYBOX:-none}"
+	echo "  TUN device   : $([ -c /dev/tun ] && echo /dev/tun)$([ -c /dev/net/tun ] && echo ' /dev/net/tun')"
+	echo "  Module dir   : ${TS_MOD_DIR}$([ -d "$TS_MOD_DIR" ] || echo ' (missing)')"
+	echo "  tailscale    : $("$TS_CLI_BIN" version 2>/dev/null | head -n 1)"
+	echo "  jq           : $(have_jq && jq --version 2>/dev/null || echo 'not usable')"
+	echo "  Daemon args  : ${TS_DAEMON_ARGS}"
+}
+
+do_status() {
   mode="${1:-summary}"
   humanize_bytes() {
     awk -v bytes="$1" 'BEGIN {
@@ -193,12 +135,18 @@ status_tailscaled(){
   }
   echo "${blue}Service Status Info${normal}"
   echo ""
-  if _tailscaled status >/dev/null 2>&1; then
-      printf "  ${blue}Daemon: ${green}%s${normal}" "running"
+  if pid="$(daemon_pid)"; then
+      printf "  ${blue}Daemon: ${green}%s${normal} (PID %s)" "running" "$pid"
+      if ! have_jq; then
+        printf "\n\n  ${yellow}jq is not usable on this device, showing plain status:${normal}\n\n"
+        timeout 10 tailscale status
+        return $?
+      fi
       ts_status=$(timeout 10 tailscale status --json 2>/dev/null || echo '{}')
       ts_status_backend="$(echo "$ts_status" | jq -r .BackendState)"
       if [ "$ts_status_backend" != "Running" ]; then
         printf " | ${blue}Backend: ${yellow}%s${normal}\n" "$ts_status_backend"
+        [ "$ts_status_backend" = "NeedsLogin" ] && printf "\n  Log in with: ${yellow}tailscale login${normal}\n"
         return 1
       fi
       printf " | ${blue}Backend: ${green}%s${normal}\n" "$ts_status_backend"
@@ -340,152 +288,34 @@ status_tailscaled(){
       printf "  ${blue}Daemon: ${red}%s${normal}\n" "stopped"
   fi
 }
-_log(){
-  case "$1" in
-    service)
-      busybox less -F~ "${TS_RUN_LOG_FILE}"
-      ;;
-    daemon)
-      busybox tail -q -n +1 -F "${TS_LOG_FILE}"
-      ;;
-    *)
-      usage log
-      ;;
-  esac
-  
-}
-_troubleshoot(){
-  echo "${red}Not yet ready!${normal}";
-  echo "${orange}Solution: ${yellow}Join telegram group at: [ ${green}https://t.me/systembinsh/158${normal} ${yellow}]${normal}";
-}
-usage(){
-    cmd="$1"
-    cmds=""
-    opts=""
-    in_cmd=false
-    while IFS= read -r line; do
-        case "$line" in
-            "# @cmd "*)
-                if [ -z "$cmd" ]; then
-                    # Global usage: collect all commands
-                    line="${line#\# @cmd }"
-                    c="${line%%\|*}"
-                    c=$(echo "$c" | xargs)
-                    [ -z "$cmds" ] && cmds="$c" || cmds="$cmds|$c"
-                elif echo "$line" | grep -q "^# @cmd $cmd "; then
-                    # Found target command
-                    in_cmd=true
-                elif [ "$in_cmd" = true ]; then
-                    # Hit next command, stop
-                    break
-                fi
-                ;;
-            "# @sub "*)
-                if [ "$in_cmd" = true ]; then
-                    line="${line#\# @sub }"
-                    subcmd="${line%%\|*}"
-                    subcmd=$(echo "$subcmd" | xargs)
-                    [ -z "$opts" ] && opts="$subcmd" || opts="$opts|$subcmd"
-                fi
-                ;;
-        esac
-    done < "$0"
-    
-    if [ -z "$cmd" ]; then
-        echo "${yellow}usage${normal}: ${green}${scripts_name}${normal} {${orange}$cmds${normal}}"
-    else
-        echo "${yellow}usage${normal}: ${green}${scripts_name}${normal} ${yellow}$cmd${normal} {${orange}$opts${normal}}"
-    fi
-}
 
-help(){
-    show_all="${1}"
-    
-    # Parse and display title/header
-    while IFS= read -r line; do
-        case "$line" in
-            "# @title "*)
-                title="${line#\# @title }"
-                echo "${green}${title}${normal}"
-                ;;
-            "# @header "*)
-                header="${line#\# @header }"
-                echo "${header}"
-                ;;
-            "# @cmd "*)
-                break
-                ;;
-        esac
-    done < "$0"
-    
-    echo "${blue}Available Command:${normal}"
-    
-    # Parse and display commands
-    while IFS= read -r line; do
-        case "$line" in
-            "# @cmd "*)
-                line="${line#\# @cmd }"
-                IFS='|' read -r cmd desc <<EOF
-$line
-EOF
-                cmd=$(echo "$cmd" | xargs)
-                desc=$(echo "$desc" | xargs)
-                printf "${yellow}%-15s${normal}\t• %s\n" "$cmd" "$desc"
-                ;;
-            "# @sub "*)
-                line="${line#\# @sub }"
-                IFS='|' read -r subcmd desc <<EOF
-$line
-EOF
-                subcmd=$(echo "$subcmd" | xargs)
-                desc=$(echo "$desc" | xargs)
-                printf "  ${yellow}↳${normal} ${orange}%-11s${normal}\t- %s\n" "$subcmd" "$desc"
-                ;;
-            "# @desc "*)
-                if [ "$show_all" = "all" ]; then
-                    desc="${line#\# @desc }"
-                    first=true
-                    echo "$desc" | busybox fold -sw70 | while IFS= read -r dline; do
-                        if [ "$first" = true ]; then
-                            printf "    ${yellow}↳${normal} %s\n" "$dline"
-                            first=false
-                        else
-                            printf "      %s\n" "$dline"
-                        fi
-                    done
-                fi
-                ;;
-        esac
-    done < "$0"
+do_log() {
+	case "$1" in
+	service | "")
+		trim_log "$TS_RUN_LOG_FILE"
+		cat "$TS_RUN_LOG_FILE" 2>/dev/null
+		;;
+	daemon)
+		tail -n +1 -f "$TS_LOG_FILE"
+		;;
+	*)
+		echo "usage: ${scripts_name} log [daemon|service]"
+		return 1
+		;;
+	esac
 }
 
 case "$1" in
-  start)
-    _tailscaled start
-    ;;
-  stop)
-    _tailscaled stop
-    ;;
-  restart)
-    _tailscaled restart
-    ;;
-  status)
-    status_tailscaled "$2"
-    ;;
-  log)
-    _log "$2"
-    ;;
-  troubleshoot)
-    _troubleshoot "$2"
-    ;;
-  help)
-    help "$2" "$3"
-    ;;
-  *)
-    if [ -n "$1" ]; then
-      echo "${yellow}${scripts_name} ${orange}$1 ${red}not found${normal}, run ${yellow}${scripts_name} help${normal} for all commands"
-      return
-    fi
-    usage
-    ;;
+start) do_start ;;
+stop) do_stop ;;
+restart) do_restart ;;
+status) do_status "$2" ;;
+log) do_log "$2" ;;
+info) do_info ;;
+help | -h | --help | "") usage ;;
+*)
+	echo "${scripts_name}: unknown command '$1'"
+	usage
+	exit 1
+	;;
 esac

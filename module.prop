@@ -1,7 +1,7 @@
 id=magisk-tailscaled
 name=Magisk Tailscaled
-version=v2.0.0.1
-versionCode=02000001
-author=anasfanani
-description=Tailscale. The easiest, most secure way to use WireGuard and 2FA.
-updateJson=https://raw.githubusercontent.com/anasfanani/Magisk-Tailscaled/master/update.json
+version=v3.0.0.0
+versionCode=03000000
+author=anasfanani, vahiru
+description=Tailscale for rooted Android (Magisk / KernelSU / APatch). Android 8 - 17.
+updateJson=https://raw.githubusercontent.com/vahiru/magisk-tailscaled/main/update.json

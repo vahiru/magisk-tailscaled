@@ -1,1 +1,4 @@
 external-sources=true
+source-path=SCRIPTDIR
+# Color codes are intentionally part of printf format strings.
+disable=SC2059
