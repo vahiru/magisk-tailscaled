@@ -71,8 +71,8 @@ android {
         applicationId = "io.github.vahiru.tailscaled"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         buildConfigField("String", "MODULE_VERSION", "\"$moduleVersion\"")
         buildConfigField("int", "MODULE_VERSION_CODE", moduleVersionCode.toString())
     }

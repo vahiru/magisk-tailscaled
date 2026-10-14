@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Login
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.VpnLock
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Language
@@ -87,6 +91,12 @@ fun HomeScreen(
             }
         }
         val status = state.status
+        if (status?.running == true && state.module.vpnActive) {
+            item { VpnCoexistCard(state) }
+        }
+        if (status?.running == true && state.privateDns && state.prefs?.corpDns != false) {
+            item { NoticeCard(Icons.Outlined.Dns, stringResource(R.string.private_dns_notice), warning = false) }
+        }
         val health = status?.health.orEmpty()
         if (health.isNotEmpty()) {
             item { NoticeCard(Icons.Outlined.Warning, health.joinToString("\n\n"), warning = true) }
@@ -217,6 +227,61 @@ private fun ThisDeviceCard(state: UiState) {
                 icon = Icons.Outlined.Person,
             )
         }
+    }
+}
+
+/** Explains what still goes through Tailscale while another VPN app is active. */
+@Composable
+private fun VpnCoexistCard(state: UiState) {
+    val module = state.module
+    val prefs = state.prefs
+    val usingExitNode = state.status?.currentExitNode != null
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.VpnLock, null)
+                Spacer(Modifier.size(12.dp))
+                Text(
+                    stringResource(R.string.vpn_detected, module.vpnInterfaces.joinToString(", ")),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            VpnLine(true, stringResource(R.string.vpn_tailnet_ok))
+            if (prefs?.routeAll == true) {
+                if (module.vpnCoexist) {
+                    VpnLine(true, stringResource(R.string.vpn_subnets_kept, module.coexistRules))
+                } else {
+                    VpnLine(false, stringResource(R.string.vpn_subnets_lost))
+                }
+            }
+            VpnLine(null, stringResource(R.string.vpn_internet_via_vpn))
+            if (usingExitNode) VpnLine(false, stringResource(R.string.vpn_exit_node_inactive))
+            if (prefs?.corpDns != false) VpnLine(false, stringResource(R.string.vpn_magicdns))
+        }
+    }
+}
+
+/** ok = true: works, false: affected, null: neutral information. */
+@Composable
+private fun VpnLine(ok: Boolean?, text: String) {
+    Row {
+        Icon(
+            when (ok) {
+                true -> Icons.Outlined.CheckCircle
+                false -> Icons.Outlined.ErrorOutline
+                null -> Icons.Outlined.Info
+            },
+            null,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.size(10.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

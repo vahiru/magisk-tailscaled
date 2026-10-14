@@ -18,6 +18,7 @@ usage: ${scripts_name} <command> [option]
   status [mode]         Show status, mode: summary (default) | peer | exit-node | all
   log [daemon|service]  Follow the daemon log or show the service log
   info                  Show environment info (Android / kernel / root manager)
+  routes                Show subnet routes kept ahead of other VPNs
   help                  Show this message
 
 Settings: ${TS_CONF}
@@ -25,10 +26,27 @@ Logs:     ${TS_RUN_DIR}
 USAGE
 }
 
+# Keeps accepted subnet routes ahead of other VPN apps, see routes.sh.
+start_routes() {
+	stop_routes
+	detach sh "${TS_SCRIPTS_DIR}/routes.sh" loop </dev/null >/dev/null 2>&1 &
+	echo "$!" >"$TS_ROUTES_PID_FILE"
+}
+
+stop_routes() {
+	if [ -f "$TS_ROUTES_PID_FILE" ]; then
+		rpid="$(cat "$TS_ROUTES_PID_FILE" 2>/dev/null)"
+		[ -n "$rpid" ] && grep -q "routes.sh" "/proc/$rpid/cmdline" 2>/dev/null && kill -9 "$rpid" 2>/dev/null
+		rm -f "$TS_ROUTES_PID_FILE"
+	fi
+	sh "${TS_SCRIPTS_DIR}/routes.sh" clear >/dev/null 2>&1
+}
+
 do_start() {
 	if pid="$(daemon_pid)"; then
 		log Info "tailscaled is already running (PID ${pid})."
 		set_description "✔ running"
+		[ -f "$TS_ROUTES_PID_FILE" ] || start_routes
 		return 0
 	fi
 	if [ ! -x "$TS_DAEMON_BIN" ]; then
@@ -57,6 +75,7 @@ do_start() {
 		echo "$pid" >"$TS_PID_FILE"
 		log Success "tailscaled is running (PID ${pid})."
 		set_description "✔ running"
+		start_routes
 		return 0
 	fi
 	rm -f "$TS_PID_FILE"
@@ -67,6 +86,7 @@ do_start() {
 }
 
 do_stop() {
+	stop_routes
 	if ! pid="$(daemon_pid)"; then
 		log Info "tailscaled is not running."
 		rm -f "$TS_PID_FILE"
@@ -121,6 +141,8 @@ do_info() {
 	echo "  tailscale    : $("$TS_CLI_BIN" version 2>/dev/null | head -n 1)"
 	echo "  jq           : $(have_jq && jq --version 2>/dev/null || echo 'not usable')"
 	echo "  Daemon args  : ${TS_DAEMON_ARGS}"
+	echo "  VPN coexist  : $([ "$TS_VPN_COEXIST" = 0 ] && echo off || echo on)"
+	echo "  VPN active   : $(ip -o link show 2>/dev/null | awk -F': ' '$2 ~ /^(tun|ppp|wg|ipsec)/ && $2 !~ /^tailscale/ {printf "%s ", $2}' | sed 's/@[^ ]*//g')"
 }
 
 do_status() {
@@ -312,6 +334,7 @@ restart) do_restart ;;
 status) do_status "$2" ;;
 log) do_log "$2" ;;
 info) do_info ;;
+routes) sh "${TS_SCRIPTS_DIR}/routes.sh" show ;;
 help | -h | --help | "") usage ;;
 *)
 	echo "${scripts_name}: unknown command '$1'"

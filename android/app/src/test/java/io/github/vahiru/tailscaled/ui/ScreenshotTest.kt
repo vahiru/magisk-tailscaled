@@ -61,7 +61,7 @@ class ScreenshotTest {
     private val prefs = TsPrefs(routeAll = true, corpDns = false, runSsh = true, wantRunning = true, hostname = "pixel")
     private val connected = UiState(root = RootState.Granted, module = module, status = status, prefs = prefs, loaded = true)
 
-    private val noopSettings = SettingsActions({}, {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, {})
+    private val noopSettings = SettingsActions({}, {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {})
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -97,6 +97,19 @@ class ScreenshotTest {
     @Test
     @Config(qualifiers = "+night")
     fun homeConnectedDark() = captureRoboImage("home_connected_dark.png", content = home(connected))
+
+    @Test
+    @Config(qualifiers = "+zh-rCN")
+    fun homeVpnActiveZh() = captureRoboImage(
+        "home_vpn_zh.png",
+        content = home(
+            connected.copy(
+                module = module.copy(vpnInterfaces = listOf("tun0"), coexistRules = 2),
+                privateDns = true,
+                prefs = prefs.copy(corpDns = true),
+            ),
+        ),
+    )
 
     @Test
     fun homeNeedsLogin() = captureRoboImage(

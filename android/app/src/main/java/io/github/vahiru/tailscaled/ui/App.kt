@@ -165,6 +165,7 @@ fun App(vm: MainViewModel) {
                                         onHostname = vm::setHostname,
                                         onDaemon = vm::setDaemon,
                                         onAutostart = vm::setAutostart,
+                                        onVpnCoexist = vm::setVpnCoexist,
                                         onRestartDaemon = vm::restartDaemon,
                                         onShowLog = vm::showLog,
                                         onInstallModule = vm::installModule,

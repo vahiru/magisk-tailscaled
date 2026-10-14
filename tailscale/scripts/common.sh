@@ -19,6 +19,7 @@ TS_CLI_BIN="${TS_BIN_DIR}/tailscale"
 TS_LOG_FILE="${TS_RUN_DIR}/tailscaled.log"
 TS_PID_FILE="${TS_RUN_DIR}/tailscaled.pid"
 TS_WATCH_PID_FILE="${TS_RUN_DIR}/watcher.pid"
+TS_ROUTES_PID_FILE="${TS_RUN_DIR}/routes.pid"
 TS_RUN_LOG_FILE="${TS_RUN_DIR}/service.log"
 
 # Defaults, may be overridden in settings.conf
@@ -26,6 +27,7 @@ TS_DAEMON_ARGS="-no-logs-no-support"
 TS_AUTOSTART=1
 TS_STOP_TIMEOUT=10
 TS_LOG_MAX_KB=2048
+TS_VPN_COEXIST=1
 
 # shellcheck source=../settings.conf
 [ -f "$TS_CONF" ] && . "$TS_CONF"

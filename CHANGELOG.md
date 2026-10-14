@@ -1,3 +1,13 @@
+## v3.1.0.0
+
+### VPN coexistence
+- Accepted subnet routes now stay on Tailscale while another VPN app is active: `routes.sh`
+  mirrors them into ip rules at priority 12510 (ahead of Android's VPN rules), follows route
+  changes and removes its rules when tailscaled stops. Toggle with `TS_VPN_COEXIST`.
+- New `tailscaled.service routes`; `info` shows VPN coexistence and active VPN interfaces.
+- App 1.1.0: detects other VPNs and Private DNS, explains what is affected, and adds a
+  "VPN coexistence" switch.
+
 ## v3.0.0.0
 
 ### New: Tailscaled Manager app

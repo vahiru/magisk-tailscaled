@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.VpnLock
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -56,6 +57,7 @@ class SettingsActions(
     val onHostname: (String) -> Unit,
     val onDaemon: (Boolean) -> Unit,
     val onAutostart: (Boolean) -> Unit,
+    val onVpnCoexist: (Boolean) -> Unit,
     val onRestartDaemon: () -> Unit,
     val onShowLog: (daemon: Boolean) -> Unit,
     val onInstallModule: () -> Unit,
@@ -152,6 +154,16 @@ fun SettingsScreen(state: UiState, a: SettingsActions) {
                 SwitchRow(stringResource(R.string.pref_exit_lan), stringResource(R.string.pref_exit_lan_summary), prefs.exitNodeAllowLan, !state.busy, Icons.Outlined.Wifi) {
                     a.onPref("exit-node-allow-lan-access", it)
                 }
+            }
+            item {
+                SwitchRow(
+                    stringResource(R.string.pref_vpn_coexist),
+                    stringResource(R.string.pref_vpn_coexist_summary),
+                    module.vpnCoexist,
+                    !state.busy,
+                    Icons.Outlined.VpnLock,
+                    a.onVpnCoexist,
+                )
             }
         }
 

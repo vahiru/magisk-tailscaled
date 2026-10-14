@@ -160,7 +160,15 @@ data class ModuleInfo(
     val autostart: Boolean = true,
     val rootManager: RootManager = RootManager.Unknown,
     val daemonPid: Int? = null,
+    /** Other VPN interfaces that are up (tun0, ppp0, wg0, …), excluding tailscale0. */
+    val vpnInterfaces: List<String> = emptyList(),
+    /** TS_VPN_COEXIST: keep accepted subnet routes ahead of other VPNs. */
+    val vpnCoexist: Boolean = true,
+    /** Number of subnet route rules currently kept ahead of other VPNs. */
+    val coexistRules: Int = 0,
 ) {
+    val vpnActive: Boolean get() = vpnInterfaces.isNotEmpty()
+
     val daemonRunning: Boolean get() = daemonPid != null
 }
 

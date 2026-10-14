@@ -10,6 +10,7 @@ import io.github.vahiru.tailscaled.data.ModuleInfo
 import io.github.vahiru.tailscaled.data.TailscaleRepository
 import io.github.vahiru.tailscaled.data.TsPrefs
 import io.github.vahiru.tailscaled.data.TsStatus
+import io.github.vahiru.tailscaled.data.isPrivateDnsActive
 import io.github.vahiru.tailscaled.root.RootProcess
 import io.github.vahiru.tailscaled.root.ShellResult
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,7 @@ data class UiState(
     val prefs: TsPrefs? = null,
     val loaded: Boolean = false,
     val busy: Boolean = false,
+    val privateDns: Boolean = false,
 ) {
     val bundledModuleNewer: Boolean
         get() = !module.installed || BuildConfig.MODULE_VERSION_CODE > module.versionCode
@@ -105,7 +107,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val module = repo.probe()
         val status = if (module.daemonRunning) repo.status() else null
         val prefs = if (status != null) repo.prefs() else null
-        _state.update { it.copy(module = module, status = status, prefs = prefs, loaded = true) }
+        val privateDns = isPrivateDnsActive(getApplication())
+        _state.update { it.copy(module = module, status = status, prefs = prefs, privateDns = privateDns, loaded = true) }
     }
 
     private fun action(block: suspend () -> ShellResult?) {
@@ -144,6 +147,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setDaemon(on: Boolean) = action { if (on) repo.startDaemon() else repo.stopDaemon() }
     fun restartDaemon() = action { repo.restartDaemon() }
     fun setAutostart(on: Boolean) = action { repo.setAutostart(on) }
+    fun setVpnCoexist(on: Boolean) = action { repo.setVpnCoexist(on) }
 
     fun setPref(flag: String, on: Boolean) = action { repo.set(flag, on.toString()) }
     fun setHostname(name: String) = action { repo.set("hostname", name) }

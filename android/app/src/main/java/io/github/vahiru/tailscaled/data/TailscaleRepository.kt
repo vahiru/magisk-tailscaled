@@ -17,6 +17,7 @@ class TailscaleRepository(private val context: Context) {
         const val TS = "$TS_DIR/bin/tailscale"
         const val SERVICE = "$TS_DIR/scripts/tailscaled.service"
         const val COMMON = "$TS_DIR/scripts/common.sh"
+        const val ROUTES = "$TS_DIR/scripts/routes.sh"
         const val CONF = "$TS_DIR/settings.conf"
         const val MOD_DIR = "/data/adb/modules/magisk-tailscaled"
         const val MOD_UPDATE_DIR = "/data/adb/modules_update/magisk-tailscaled"
@@ -37,6 +38,9 @@ class TailscaleRepository(private val context: Context) {
             echo "VERSION=$(sed -n 's/^version=//p' ${'$'}P 2>/dev/null)"
             echo "VERSIONCODE=$(sed -n 's/^versionCode=//p' ${'$'}P 2>/dev/null)"
             echo "AUTOSTART=$(sed -n 's/^TS_AUTOSTART=//p' $CONF 2>/dev/null | tr -d '"')"
+            echo "COEXIST=$(sed -n 's/^TS_VPN_COEXIST=//p' $CONF 2>/dev/null | tr -d '"' | tail -n 1)"
+            echo "COEXISTRULES=$( (ip -4 rule show; ip -6 rule show) 2>/dev/null | grep -c '^12510:')"
+            echo "VPNIF=$(ip -o link show up 2>/dev/null | awk -F': ' '${'$'}2 ~ /^(tun|ppp|wg|ipsec|utun)/ && ${'$'}2 !~ /^tailscale/ { sub(/@.*/, "", ${'$'}2); printf "%s ", ${'$'}2 }')"
             if [ -f /data/adb/ap/bin/busybox ] || [ -x /data/adb/apd ]; then echo MGR=APatch
             elif [ -x /data/adb/ksud ] || [ -d /data/adb/ksu ]; then echo MGR=KernelSU
             elif [ -d /data/adb/magisk ]; then echo MGR=Magisk; fi
@@ -59,6 +63,9 @@ class TailscaleRepository(private val context: Context) {
                 else -> RootManager.Unknown
             },
             daemonPid = kv["PID"]?.toIntOrNull(),
+            vpnInterfaces = kv["VPNIF"].orEmpty().split(' ').filter { it.isNotBlank() },
+            vpnCoexist = kv["COEXIST"] != "0",
+            coexistRules = kv["COEXISTRULES"]?.toIntOrNull() ?: 0,
         )
     }
 
@@ -90,12 +97,22 @@ class TailscaleRepository(private val context: Context) {
     suspend fun ping(ip: String) =
         RootShell.exec("$TS ping --c=3 --timeout=3s ${shQuote(ip)}", timeoutMs = 20_000)
 
-    suspend fun setAutostart(on: Boolean): ShellResult {
+    /** Sets KEY=0/1 in settings.conf, appending it when missing. */
+    private suspend fun setConfFlag(key: String, on: Boolean): ShellResult {
         val v = if (on) 1 else 0
         return RootShell.exec(
-            "if grep -q '^TS_AUTOSTART=' $CONF 2>/dev/null; then sed -i 's/^TS_AUTOSTART=.*/TS_AUTOSTART=$v/' $CONF; " +
-                "else echo 'TS_AUTOSTART=$v' >> $CONF; fi",
+            "if grep -q '^$key=' $CONF 2>/dev/null; then sed -i 's/^$key=.*/$key=$v/' $CONF; " +
+                "else echo '$key=$v' >> $CONF; fi",
         )
+    }
+
+    suspend fun setAutostart(on: Boolean) = setConfFlag("TS_AUTOSTART", on)
+
+    /** Toggles subnet-route VPN coexistence and applies it right away. */
+    suspend fun setVpnCoexist(on: Boolean): ShellResult {
+        val r = setConfFlag("TS_VPN_COEXIST", on)
+        if (!r.ok) return r
+        return RootShell.exec("[ -f $ROUTES ] && sh $ROUTES sync; true")
     }
 
     suspend fun readLog(daemon: Boolean, lines: Int = 400): String =

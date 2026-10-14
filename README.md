@@ -50,6 +50,24 @@ Notes for KernelSU:
 If `tailscale` is not found before the first reboot, use the full path:
 `su -c /data/adb/tailscale/bin/tailscale login`.
 
+## Using it together with another VPN app
+
+tailscaled uses its own `tailscale0` interface plus policy routing rules placed around
+Android's VPN rules (priority 13000), so it runs side by side with VPN apps:
+
+| Traffic | With another VPN active |
+|---|---|
+| Tailnet devices (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) | Tailscale (rule 12500, ahead of the VPN) |
+| Accepted subnet routes | Tailscale, thanks to the module's *VPN coexistence* rules (12510) |
+| Other internet traffic | the other VPN |
+| Tailscale exit node | no effect until the other VPN is turned off |
+| MagicDNS names | may not resolve (DNS goes through the VPN); use `100.x` addresses |
+
+- VPN coexistence is on by default (`TS_VPN_COEXIST=1` in `settings.conf`); `tailscaled.service routes`
+  lists the active rules. The app shows a summary card when another VPN is detected.
+- Android *Private DNS* (DNS over TLS) bypasses Tailscale DNS, so MagicDNS does not work with it.
+- A VPN's "Block connections without VPN" (lockdown) option may block tailnet traffic.
+
 ## Android app (Tailscaled Manager)
 
 A Material 3 (Material You) companion app in [`android/`](android/). It uses root (`su`) to talk to
@@ -92,6 +110,7 @@ TS_DAEMON_ARGS="-no-logs-no-support"   # extra tailscaled flags
 TS_AUTOSTART=1                         # start on boot
 TS_STOP_TIMEOUT=10                     # seconds before SIGKILL on stop
 TS_LOG_MAX_KB=2048                     # log trim threshold
+TS_VPN_COEXIST=1                       # keep subnet routes on Tailscale while another VPN is on
 ```
 
 ## Available commands
@@ -103,6 +122,7 @@ TS_LOG_MAX_KB=2048                     # log trim threshold
   - `status [summary|peer|exit-node|all]`
   - `log [daemon|service]`
   - `info`: Android version, kernel, page size, root manager, binaries (include this in bug reports)
+  - `routes`: subnet routes kept on Tailscale while another VPN is active
 
 ## Example of Using Tailscale
 

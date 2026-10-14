@@ -117,6 +117,10 @@ unzip -qqjo "$ZIPFILE" 'tailscale/scripts/*' -d "$TS_SCRIPTS_DIR"
 if [ ! -f "$TS_DIR/settings.conf" ]; then
 	unzip -qqjo "$ZIPFILE" 'tailscale/settings.conf' -d "$TS_DIR"
 fi
+# Settings added in later versions, appended to kept settings.conf files.
+if ! grep -q '^TS_VPN_COEXIST=' "$TS_DIR/settings.conf" 2>/dev/null; then
+	printf '\n# Keep accepted subnet routes on Tailscale while another VPN app is active.\nTS_VPN_COEXIST=1\n' >>"$TS_DIR/settings.conf"
+fi
 
 ui_print "- Extracting module files"
 unzip -qqo "$ZIPFILE" module.prop service.sh action.sh uninstall.sh -d "$MODPATH"
